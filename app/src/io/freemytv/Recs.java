@@ -36,7 +36,7 @@ import java.util.concurrent.Executors;
 /**
  * Home screen picks ("This morning / afternoon / tonight"): what's trending this week plus recent releases, only from
  * the streaming apps installed on the TV (Netflix, Prime Video, Disney+, Max, Apple TV, Okko, Hulu, Paramount+, Peacock,
- * Globoplay...), via TMDB (an open movie database that knows what streams where in each country). Six per hour.
+ * Globoplay...), via TMDB (an open movie database that knows what streams where in each country). 3 per hour, or up to 6 (Home Settings).
  * "Watch" opens the service's app.
  *
  * Each person uses their own free TMDB key (config.properties "tmdb_key", built into the app). It never goes to the log.
@@ -52,8 +52,8 @@ final class Recs {
 
     interface Listener { void onRecs(); }
 
-    /** Cards per tab and hour; the home screen shows 3 at a time and scrolls. */
-    static final int CARDS = 6;
+    /** The most cards per tab and hour (Prefs.cards() picks how many, 3 by default); the home screen shows 3 at a time and scrolls. */
+    static final int MAX_CARDS = 6;
 
     private static final String API = "https://api.themoviedb.org/3";
     /** The backdrops: on a 720p UI, TMDB's 1280-wide copy shows the same and is lighter to download and decode. */
@@ -200,11 +200,12 @@ final class Recs {
         }
         if (list.isEmpty()) return list;
         long hour = System.currentTimeMillis() / 3600_000L;
-        // CARDS per hour, never two from the same franchise ("Law & Order" and "Law & Order: Special…").
+        // Prefs.cards() per hour, never two from the same franchise ("Law & Order" and "Law & Order: Special…").
         List<Pick> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
-        for (int i = 0; i < list.size() && out.size() < CARDS; i++) {
-            Pick p = list.get((int) ((hour * CARDS + i) % list.size()));
+        int cards = Prefs.cards();
+        for (int i = 0; i < list.size() && out.size() < cards; i++) {
+            Pick p = list.get((int) ((hour * cards + i) % list.size()));
             if (seen.add(franchise(p.title))) out.add(p);
         }
         return out;

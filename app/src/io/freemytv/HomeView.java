@@ -144,12 +144,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // The three tabs, then the round buttons at the top right (up to HomeApps.MAX_TOP).
     private final Spring[] topFocus = new Spring[3 + HomeApps.MAX_TOP];
     private final RectF[] topRects = new RectF[3 + HomeApps.MAX_TOP];
-    private final Spring[] cardFocus = new Spring[Recs.CARDS];
+    private final Spring[] cardFocus = new Spring[Recs.MAX_CARDS];
     /** How open (wide) each card is: 1 for the one at cardIndex, 0 for the others; the widths always add up to the same. */
-    private final Spring[] cardOpen = new Spring[Recs.CARDS];
+    private final Spring[] cardOpen = new Spring[Recs.MAX_CARDS];
     /** The row scrolls in whole cards: the focused one stays among the first three. */
     private final Spring cardScroll = new Spring(0.32f, 0.78f, 0);
-    private final RectF[] cardRects = new RectF[Recs.CARDS];
+    private final RectF[] cardRects = new RectF[Recs.MAX_CARDS];
     private final List<HomeApps.Item> lightButtons = new ArrayList<>();
     private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote;
     private Shader lightGradient;
@@ -356,7 +356,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             checkNotices();
             updatePalette();
             checkNight(true);
-            updatePicks();      // six new ones every hour
+            updatePicks();      // new ones every hour
             handler.postDelayed(this, 15_000);
         }
     };
@@ -395,7 +395,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             topFocus[i] = new Spring(0.26f, 0.85f, 0);
             topRects[i] = new RectF();
         }
-        for (int i = 0; i < Recs.CARDS; i++) {
+        for (int i = 0; i < Recs.MAX_CARDS; i++) {
             cardFocus[i] = new Spring(0.32f, 0.78f, 0);
             cardOpen[i] = new Spring(0.32f, 0.78f, i == 0 ? 1 : 0);
             cardRects[i] = new RectF();
@@ -2531,7 +2531,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             return;
         }
         for (int i = picksOn() ? 0 : 3; i < 3 + lightButtons.size(); i++) out.add(a11yId(Z_TOP, i));
-        for (int i = 0; i < Math.min(Recs.CARDS, cards.size()); i++) out.add(a11yId(Z_CARDS, i));
+        for (int i = 0; i < Math.min(Recs.MAX_CARDS, cards.size()); i++) out.add(a11yId(Z_CARDS, i));
         for (int i = 0; i < shelf.size(); i++) out.add(a11yId(Z_SHELF, i));
         for (int i = 0; i < drawerItems.size(); i++) out.add(a11yId(Z_DRAWER, i));
         if (drawerOpen && Prefs.weather()) out.add(a11yId(WIDGETS, 0));
@@ -2583,7 +2583,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 dy = (i < 3 ? heroLayer : status).getTranslationY();
                 break;
             case Z_CARDS:
-                if (i >= Math.min(Recs.CARDS, cards.size())) return false;
+                if (i >= Math.min(Recs.MAX_CARDS, cards.size())) return false;
                 a11yRect.set(cardRects[i]);
                 dy = heroLayer.getTranslationY();
                 break;
@@ -2762,7 +2762,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void layoutCards() {
         float top = L_CARDS_TOP * k, ch = L_CARD_H * k, g = L_CARD_GAP * k, tall = L_TALL_W * k;
         float wide = (CONTENT_R - MARGIN) * k - 2 * tall - 2 * g, x = MARGIN * k - cardScroll.value * (tall + g);
-        for (int i = 0; i < Recs.CARDS; i++) {
+        for (int i = 0; i < Recs.MAX_CARDS; i++) {
             float w = Math.max(tall * 0.5f, tall + (wide - tall) * cardOpen[i].value);
             cardRects[i].set(x, top, x + w, top + ch);
             x += w + g;
@@ -2875,8 +2875,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         layoutCards();
         int top = -1;
-        for (int i = 0; i < Recs.CARDS; i++) if (cardFocus[i].value > 0.02f && (top < 0 || cardFocus[i].value > cardFocus[top].value)) top = i;
-        for (int i = 0; i < Recs.CARDS; i++) if (i != top) drawLightCard(c, i);
+        int slots = Prefs.cards();   // the others aren't drawn: at 3, no card peeks in at the right edge
+        for (int i = 0; i < slots; i++) if (cardFocus[i].value > 0.02f && (top < 0 || cardFocus[i].value > cardFocus[top].value)) top = i;
+        for (int i = 0; i < slots; i++) if (i != top) drawLightCard(c, i);
         if (top >= 0) drawLightCard(c, top);
         if (HomeData.coinCount() > 0) drawQuotes(c);
     }
