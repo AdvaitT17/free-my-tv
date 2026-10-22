@@ -147,6 +147,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Spring[] cardFocus = new Spring[Recs.MAX_CARDS];
     /** How open (wide) each card is: 1 for the one at cardIndex, 0 for the others; the widths always add up to the same. */
     private final Spring[] cardOpen = new Spring[Recs.MAX_CARDS];
+    /** Picks per tab (Prefs.cards()), read when the cards update, not on every frame. */
+    private int cardSlots = 3;
     /** The row scrolls in whole cards: the focused one stays among the first three. */
     private final Spring cardScroll = new Spring(0.32f, 0.78f, 0);
     private final RectF[] cardRects = new RectF[Recs.MAX_CARDS];
@@ -2771,6 +2773,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /** The three cards of the current tab (Explore, Movies, Shows) and the background taken from the first one. */
     private void updateCards() {
+        cardSlots = Prefs.cards();
         List<Recs.Pick> list = recs.now(TAB_KIND[tab]);
         if (!samePicks(list, cards)) {
             cards = list;
@@ -2875,7 +2878,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         layoutCards();
         int top = -1;
-        int slots = Prefs.cards();   // the others aren't drawn: at 3, no card peeks in at the right edge
+        int slots = cardSlots;   // the others aren't drawn: at 3, no card peeks in at the right edge
         for (int i = 0; i < slots; i++) if (cardFocus[i].value > 0.02f && (top < 0 || cardFocus[i].value > cardFocus[top].value)) top = i;
         for (int i = 0; i < slots; i++) if (i != top) drawLightCard(c, i);
         if (top >= 0) drawLightCard(c, top);
