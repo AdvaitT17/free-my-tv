@@ -113,7 +113,7 @@ public class SettingsActivity extends Activity {
     }
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
-        private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5, PICKS = 6;
+        private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5, PICKS = 6, PICK_FROM = 7;
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
         private static final float LIST_X = 1000, LIST_R = 1824, LIST_TOP = 186, ROW_GAP = 8, CHOICE_H = 104;
@@ -132,6 +132,8 @@ public class SettingsActivity extends Activity {
         // The shelf editor (also the top buttons' one, with editingTop): what it can hold (selected ones first, in
         // order) and the selection.
         private final List<String[]> shelfRows = new ArrayList<>();
+        private boolean someServicesOff;   // is a streaming service on the TV switched off in Picks from (counted when the screen opens)
+        private final List<String[]> services = new ArrayList<>();   // {key, name} of the streaming services on the TV (Picks from)
         private final List<String> shelfOrder = new ArrayList<>();
         private boolean editingTop;
         private int pickFor, pickCurrent, pickScroll;   // pickFor: the remote button (index + 1)
@@ -237,6 +239,11 @@ public class SettingsActivity extends Activity {
                     if (at >= pickLabels.size()) return "";
                     return pickLabels.get(at) + (at == pickCurrent ? Ui.tr(", selected") : "")
                             + ", " + Ui.trf("{i} of {n}", "i", at + 1, "n", pickLabels.size());
+                }
+                case PICK_FROM: {
+                    int at = pickScroll + row;
+                    if (at >= services.size()) return "";
+                    return services.get(at)[1] + ", " + onOff(!Prefs.serviceOff(services.get(at)[0])) + ", " + Ui.trf("{i} of {n}", "i", at + 1, "n", services.size());
                 }
                 case SHELF_EDIT: {
                     int at = pickScroll + row;
@@ -358,6 +365,7 @@ public class SettingsActivity extends Activity {
                 case PICKS: return picksLabels().length;
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
                 case SHELF_EDIT: return Math.min(PICK_VISIBLE, shelfRows.size());
+                case PICK_FROM: return Math.min(PICK_VISIBLE, services.size());
                 default: return Prefs.KEYS.length;
             }
         }
@@ -386,7 +394,7 @@ public class SettingsActivity extends Activity {
             c.drawText(Ui.tr("Your TV's home screen and screensaver"), cx, 660 * k, subtitle);
             c.drawText(versionName(getContext()), cx, 704 * k, version);
 
-            if (screen == MAIN) drawMain(c, seconds); else if (screen == HOME_CHOICE) drawChoice(c); else if (screen == PICKER) drawPicker(c); else if (screen == SHELF_EDIT) drawShelfEditor(c); else drawList(c);
+            if (screen == MAIN) drawMain(c, seconds); else if (screen == HOME_CHOICE) drawChoice(c); else if (screen == PICKER) drawPicker(c); else if (screen == SHELF_EDIT) drawShelfEditor(c); else if (screen == PICK_FROM) drawServices(c); else drawList(c);
         }
 
         private void drawMain(Canvas c, float seconds) {
@@ -603,7 +611,7 @@ public class SettingsActivity extends Activity {
                     if (down && screen == SHELF_EDIT) {
                         moveShelfApp(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
-                    } else if (down && (screen == HOME_SETTINGS || screen == REMOTE_KEYS || screen == PICKS)) {
+                    } else if (down && (screen == HOME_SETTINGS || screen == REMOTE_KEYS || screen == PICKS || screen == PICK_FROM)) {
                         adjust(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
                     }
@@ -633,6 +641,11 @@ public class SettingsActivity extends Activity {
                             } else if (screen == PICKS) {
                                 focus = PICKS_ROW;
                                 screen = HOME_SETTINGS;
+                            } else if (screen == PICK_FROM) {
+                                countServicesOff();
+                                focus = 1;
+                                screen = PICKS;
+                                screen = HOME_SETTINGS;
                             } else {
                                 focus = screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? (editingTop ? 4 : 3)
                                         : screen == REMOTE_KEYS ? 5 : 0;
@@ -652,7 +665,7 @@ public class SettingsActivity extends Activity {
         // MARK: - Home Settings and Remote Buttons
 
         private static final String[] UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"};
-        /** Home Settings: language, temperature, theme, sounds, picks per tab, weather, city, quotes, then one row per coin. */
+        /** Home Settings: language, temperature, theme, sounds, picks, weather, city, quotes, then one row per coin. */
         private static final int PICKS_ROW = 4, CITY_ROW = 6, COIN_ROWS = 8;
 
         private boolean dollar() {
@@ -668,6 +681,7 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Picks"));
             l.add(Ui.tr("Weather widget"));
             l.add(Ui.tr("City"));
+            l.add(Ui.tr("Picks from"));
             l.add(Ui.tr("Quotes widget"));
             l.add("Bitcoin");
             l.add("Ethereum");
@@ -677,11 +691,11 @@ public class SettingsActivity extends Activity {
         }
 
         private String[] picksLabels() {
-            return new String[] {Ui.tr("Picks per tab")};
+            return new String[] {Ui.tr("Picks per tab"), Ui.tr("Picks from")};
         }
 
         private String[] picksValues() {
-            return new String[] {String.valueOf(Prefs.cards())};
+            return new String[] {String.valueOf(Prefs.cards()), someServicesOff ? Ui.tr("services|Some") : Ui.tr("services|All")};
         }
 
         private String[] settingValues() {
@@ -757,8 +771,14 @@ public class SettingsActivity extends Activity {
         /** Changes the focused row's value one step (OK and → go forward, ← goes back). */
         private void adjust(int dir) {
             if (screen == PICKS) {
-                int n = Prefs.cards() - 3, span = Recs.MAX_CARDS - 3 + 1;
-                Prefs.setCards(3 + (n + dir + span) % span);
+                if (focus == 0) {
+                    int n = Prefs.cards() - 3, span = Recs.MAX_CARDS - 3 + 1;
+                    Prefs.setCards(3 + (n + dir + span) % span);
+                }
+                return;
+            }
+            if (screen == PICK_FROM) {
+                toggleService();
                 return;
             }
             if (screen == REMOTE_KEYS) {
@@ -845,11 +865,11 @@ public class SettingsActivity extends Activity {
         }
 
         private boolean scrolling() {
-            return screen == PICKER || screen == SHELF_EDIT;
+            return screen == PICKER || screen == SHELF_EDIT || screen == PICK_FROM;
         }
 
         private int listSize() {
-            return screen == SHELF_EDIT ? shelfRows.size() : pickLabels.size();
+            return screen == SHELF_EDIT ? shelfRows.size() : screen == PICK_FROM ? services.size() : pickLabels.size();
         }
 
         // MARK: - Shelf editor
@@ -986,6 +1006,42 @@ public class SettingsActivity extends Activity {
                     LIST_X * k + 30 * k, hy, hint);
         }
 
+        /** "Some" only when one of the services the TV has is off (a service it doesn't have, or a typo in hide_services, doesn't count). */
+        private void countServicesOff() {
+            someServicesOff = false;
+            for (String[] service : Recs.installedServices(getContext())) someServicesOff |= Prefs.serviceOff(service[0]);
+        }
+
+        private void toggleService() {
+            int at = pickScroll + focus;
+            if (at >= services.size()) return;
+            String key = services.get(at)[0];
+            Prefs.setServiceOff(key, !Prefs.serviceOff(key));
+        }
+
+        /** Picks from: one row per streaming service on the TV, On or Off. */
+        private void drawServices(Canvas c) {
+            Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
+            c.drawText(Ui.tr("Picks from"), LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
+            int rows = Math.min(PICK_VISIBLE, services.size());
+            for (int i = 0; i < rows; i++) {
+                float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
+                rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
+                float f = drawRowBackground(c, i);
+                rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
+                rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
+                float base = rowRect.centerY() + Ui.halfCap(rowLabel);
+                String[] service = services.get(pickScroll + i);   // the list scrolls past 9 services, like the pickers
+                c.drawText(service[1], rowRect.left + 30 * k, base, rowLabel);
+                c.drawText(onOff(!Prefs.serviceOff(service[0])), rowRect.right - 30 * k, base, rowValue);
+            }
+            Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
+            float hy = (LIST_TOP + 20 + rows * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
+            c.drawText(services.isEmpty() ? Ui.tr("No streaming apps on this TV.")
+                    : Ui.tr("Titles from a service that is off are left out of the picks."),
+                    LIST_X * k + 30 * k, hy, hint);
+        }
+
         private void drawList(Canvas c) {
             boolean keys = screen == REMOTE_KEYS, picks = screen == PICKS;
             String[] labels = keys ? keyLabels() : picks ? picksLabels() : settingLabels();
@@ -1057,8 +1113,19 @@ public class SettingsActivity extends Activity {
                 askCity();
                 return;
             } else if (screen == HOME_SETTINGS && focus == PICKS_ROW) {
+                countServicesOff();
                 screen = PICKS;
                 focus = 0;
+            } else if (screen == PICKS && focus == 1) {
+                services.clear();
+                services.addAll(Recs.installedServices(c));
+                screen = PICK_FROM;
+                pickScroll = 0;
+                focus = 0;
+            } else if (screen == PICK_FROM) {
+                toggleService();
+                invalidate();
+                return;
             } else if (screen == HOME_SETTINGS || screen == PICKS) {
                 adjust(1);
                 invalidate();

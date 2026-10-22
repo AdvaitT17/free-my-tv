@@ -514,6 +514,19 @@
           step: function () { if (Prefs.quotes()) { Prefs.setCoin(i, !Prefs.coin(i)); Data.settingsChanged(); } }});
       })(i);
     }
+    var sv = Data.services();
+    if (sv.length) {
+      var someOff = false;   // only the services this TV has count
+      for (var q = 0; q < sv.length; q++) someOff = someOff || Prefs.serviceOff(sv[q].key);
+      rows.push({label: tr('Picks from'), value: someOff ? tr('services|Some') : tr('services|All'),
+        step: function () { Prefs.set('servicesOff', []); Data.settingsChanged(); }});
+      for (var j = 0; j < sv.length; j++) {
+        (function (key, name) {
+          rows.push({label: name, toggle: !Prefs.serviceOff(key),
+            step: function () { Prefs.setServiceOff(key, !Prefs.serviceOff(key)); Data.refresh(); Data.settingsChanged(); }});
+        })(sv[j].key, sv[j].name);
+      }
+    }
     rows.push({label: tr('Shelf'), value: '›', step: function (d) { if (d >= 0) openShelfEdit(); }});
     rows.push({label: tr('TV Settings'), value: '›', step: function (d) { if (d >= 0) tvSettings(); }});
     return rows;
@@ -831,7 +844,7 @@
   var saverOn = false, idleAt = Date.now(), saverIndex = 0, saverTimer = 0, SAVER_AFTER = 5 * 60000;
 
   function showSaver() {
-    var photos = Data.showcase().filter(function (p) { return p.backdrop && Data.appFor(p.app); });
+    var photos = Data.showcase().filter(function (p) { return p.backdrop && Data.usable(p.app); });
     saverOn = true;
     var s = $('saver');
     s.innerHTML = '';
