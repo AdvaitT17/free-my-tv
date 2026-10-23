@@ -681,7 +681,6 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Picks"));
             l.add(Ui.tr("Weather widget"));
             l.add(Ui.tr("City"));
-            l.add(Ui.tr("Picks from"));
             l.add(Ui.tr("Quotes widget"));
             l.add("Bitcoin");
             l.add("Ethereum");
@@ -708,7 +707,7 @@ public class SettingsActivity extends Activity {
             String theme = Prefs.theme();
             v[2] = theme.equals("light") ? Ui.tr("Light") : theme.equals("dark") ? Ui.tr("Dark") : Ui.tr("Automatic");
             v[3] = onOff(Prefs.sounds());
-            v[PICKS_ROW] = "›";   // opens its own screen: Picks per tab (and, later, the services)
+            v[PICKS_ROW] = "›";   // opens its own screen: Picks per tab and Picks from
             v[5] = onOff(Prefs.weather());
             v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
             v[7] = onOff(Prefs.quotes());
