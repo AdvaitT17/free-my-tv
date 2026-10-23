@@ -2778,10 +2778,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (!samePicks(list, cards)) {
             cards = list;
             cardIndex = Math.min(cardIndex, Math.max(0, list.size() - 1));
-            if (zone == Z_CARDS && list.isEmpty()) {
-                zone = Z_SHELF;
-                retarget(false);
-            }
+            if (zone == Z_CARDS && list.isEmpty()) zone = Z_SHELF;
+            retarget(false);   // the wide card and the scroll follow the clamped index, whatever has the focus
         }
         // This tab's cards, then the first three of the others (what shows at first): switching tabs is quick, and
         // the images stay under Recs's cap in memory.
@@ -2934,8 +2932,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         Bitmap img = b == null ? null : b.wide, poster = recs.poster(p);
         float open = Ui.clamp(cardOpen[i].value);
         if (poster != null) {   // narrow: the poster; as the card widens the backdrop fades in over it
-            roundImage(c, poster, cell, r, true, 1);
-            if (img != null && open > 0.02f) roundImage(c, img, cell, r, true, Ui.clamp((open - 0.1f) / 0.6f));
+            float back = img == null ? 0 : Ui.clamp((open - 0.1f) / 0.6f);
+            if (back < 0.999f) roundImage(c, poster, cell, r, true, 1);   // not once the backdrop covers it
+            if (back > 0.001f) roundImage(c, img, cell, r, true, back);
         } else if (img != null) {
             roundImage(c, img, cell, r, true, 1);
         } else {

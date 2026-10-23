@@ -773,7 +773,7 @@ final class Recs {
             synchronized (images) {
                 images.put(p.backdrop, backdrop);
                 if (poster != null) posters.put(p.backdrop, poster);
-                while (images.size() > (forLight ? 12 : 4)) images.remove(images.keySet().iterator().next());
+                while (images.size() > (forLight ? Prefs.cards() + 7 : 4)) images.remove(images.keySet().iterator().next());
                 posters.keySet().retainAll(images.keySet());
             }
             notifyListeners();
@@ -794,7 +794,9 @@ final class Recs {
             f.delete();
             return null;
         }
-        return Backdrop.card(full, Backdrop.TALL_W, Backdrop.TALL_H);
+        Bitmap card = Backdrop.card(full, Backdrop.TALL_W, Backdrop.TALL_H);
+        if (card != full && !full.isRecycled()) full.recycle();   // the decoded 500 × 750 poster is 1.5 MB
+        return card;
     }
 
     Bitmap poster(Pick p) {
