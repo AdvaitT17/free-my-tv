@@ -278,7 +278,7 @@ public class SettingsActivity extends Activity {
                     boolean keys = screen == REMOTE_KEYS;
                     String[] labels = listLabels(), values = listValues();
                     int at = keys ? row : pickScroll + row;
-                    return at < labels.length ? labels[at] + ", " + values[at] : "";
+                    return at >= labels.length ? "" : values[at].equals("›") ? labels[at] : labels[at] + ", " + values[at];   // "›" is only drawn
                 }
                 case PICKER: {
                     int at = pickScroll + row;
@@ -1393,6 +1393,7 @@ public class SettingsActivity extends Activity {
                 return;
             } else if (screen == HOME_SETTINGS && pickScroll + focus == PICKS_ROW) {
                 screen = PICKS;
+                pickScroll = 0;   // this list is short: it draws from row 0
                 focus = 0;
             } else if (screen == POWER) {
                 activatePower();

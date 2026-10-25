@@ -3,6 +3,8 @@ package io.freemytv;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
+import android.graphics.Shader;
 import android.graphics.BitmapFactory;
 import android.net.ConnectivityManager;
 import android.net.Network;
@@ -67,7 +69,7 @@ final class Recs {
     private static final int ANIMATION = 16;
     private static final long LIST_EVERY = 6 * 3600_000L;
     /** Bump when what is saved for each title changes (the saved list is discarded and fetched again). */
-    private static final int CACHE_VERSION = 4;
+    private static final int CACHE_VERSION = 5;
     private static final int MANHA = 0, TARDE = 1, NOITE = 2;
     /** Service name on TMDB (part of the name, lowercase) → TV app (HomeApps key, package). */
     private static final String[][] SERVICES = {
@@ -150,13 +152,24 @@ final class Recs {
         return instance;
     }
 
+    /** A narrow card's portrait and its shader: the shader holds the bitmap, so they leave together. */
+    static final class Poster {
+        final Bitmap bitmap;
+        final BitmapShader shader;
+
+        Poster(Bitmap bitmap) {
+            this.bitmap = bitmap;
+            shader = new BitmapShader(bitmap, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+        }
+    }
+
     private final Context context;
     private final SharedPreferences cache;
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private final Handler main = new Handler(Looper.getMainLooper());
     private final List<Listener> listeners = new ArrayList<>();
-    private final Map<String, Bitmap> posters = new LinkedHashMap<>();   // narrow-card portraits, same keys as images
-    private final Map<String, Backdrop> images = new LinkedHashMap<>();   // this hour's, built and ready to draw
+    private final Map<String, Poster> posters = new LinkedHashMap<>();   // narrow-card portraits, same keys as images
+    private final Map<String, Backdrop> images = new LinkedHashMap<>(16, 0.75f, true);   // this hour's, built and ready to draw
     private final java.util.Set<String> pending = new java.util.HashSet<>();
     private volatile List<Pick> picks = new ArrayList<>();
     private volatile int period = -1;
@@ -832,7 +845,7 @@ final class Recs {
             boolean forLight = light;
             Backdrop backdrop = Backdrop.make(b, forLight);
             if (forLight != light) return;   // the design changed midway: this one is stale
-            Bitmap poster = forLight ? loadPoster(p) : null;
+            Poster poster = forLight ? loadPoster(p) : null;
             synchronized (images) {
                 images.put(p.backdrop, backdrop);
                 if (poster != null) posters.put(p.backdrop, poster);
@@ -848,7 +861,7 @@ final class Recs {
     }
 
     /** The poster at the narrow card's size, or null (not downloaded yet or unreadable). */
-    private Bitmap loadPoster(Pick p) {
+    private Poster loadPoster(Pick p) {
         File f = posterFile(p);
         if (f == null || !f.exists()) return null;
         Bitmap full = BitmapFactory.decodeFile(f.getPath());
@@ -859,10 +872,10 @@ final class Recs {
         }
         Bitmap card = Backdrop.card(full, Backdrop.TALL_W, Backdrop.TALL_H);
         if (card != full && !full.isRecycled()) full.recycle();   // the decoded 500 × 750 poster is 1.5 MB
-        return card;
+        return new Poster(card);
     }
 
-    Bitmap poster(Pick p) {
+    Poster poster(Pick p) {
         synchronized (images) {
             return p == null || p.backdrop == null ? null : posters.get(p.backdrop);
         }
