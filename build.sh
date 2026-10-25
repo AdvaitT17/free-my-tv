@@ -78,8 +78,9 @@ lan_server() {   # lan_server <key>: checks it; the host of an http:// one joins
     http://*)
       host="$(printf '%s' "$v" | sed -E -e 's#^http://##' -e 's#[/?].*$##' -e 's#:[0-9]+$##' | tr 'A-Z' 'a-z')"
       lan_host "$host" || {
-        echo "config.properties: $1 in plain http:// must be on your own network (a private address like 192.168.1.20," >&2
-        echo "or a .local, .lan or .home.arpa name); use https:// for anything else (got \"$v\")" >&2
+        echo "config.properties: $1 in plain http:// must be on your own network (a private address like" >&2
+        echo "192.168.1.20, or a .local, .lan or .home.arpa name); use https:// for anything else (over Tailscale, the" >&2
+        echo "server's https://<machine>.<tailnet>.ts.net address). Got \"$v\"" >&2
         exit 1
       }
       case " $LAN_HTTP_HOSTS " in *" $host "*) ;; *) LAN_HTTP_HOSTS="$LAN_HTTP_HOSTS $host" ;; esac
