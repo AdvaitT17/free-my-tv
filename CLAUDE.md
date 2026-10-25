@@ -340,7 +340,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   (webOS 3 and 4, Tizen 3) run a Chromium from 2015 to 2017 (`tools/check.sh` greps for all of these); only transform
   and opacity animate. Tizen 2.4 (2016) runs WebKit 538: no Intl (`fmt` in data.js rounds by hand), SVGs need a width
   and height, and `tv.js` adds a `lite` class there that turns off shadows and transitions, which its GPU can't keep up
-  with; it also can't open the TV's settings (`TV.canOpenSettings`). `web/tv.js` is the
+  with (TVs with 1 GB get it too, `navigator.deviceMemory`: an LG on webOS TV Lite went from 25 to 60 fps); it also
+  can't open the TV's settings (`TV.canOpenSettings`). `web/tv.js` is the
   TV's side: on LG, Luna (`listLaunchPoints`, `launch`, the inputs; where webOS 6 and newer deny `listLaunchPoints`
   to Developer Mode apps, the list comes from the TV's remote control API on `ws://127.0.0.1:3000` once the TV has
   allowed it (it asks once; a "no" isn't asked again), and until then from `getAppLoadStatus` over a list of known
