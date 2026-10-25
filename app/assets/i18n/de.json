@@ -200,7 +200,7 @@
  "Shows": "Serien",
  "Sign in": "Anmelden",
  "Sign out": "Abmelden",
- "Sign out of {name}? The picks go back to TMDB's alone.": "{name} abmelden? Die Tipps kommen dann wieder nur von TMDB.",
+ "Sign out of {name}? The picks go back to TMDB's alone.": "{name} abmelden? Die Empfehlungen kommen dann wieder nur von TMDB.",
  "Sign-in declined on Trakt.": "Anmeldung bei Trakt abgelehnt.",
  "Signed in": "Angemeldet",
  "Sleep Timer": "Sleep-Timer",
