@@ -30,6 +30,7 @@ before you do it, and let them do the taps on the TV.
    it. If they paste it in the chat anyway, put it only in `config.properties`.
    Without a key everything works except the picks and the screensaver photos.
    The same goes for the optional `watchmode_key` (free, watchmode.com; makes picks open the title's page): theirs, secret, only in `config.properties`.
+   And for the optional `immich_api_key` (with `immich_server`, their own Immich server: My Photos come from it).
 5. **Build:** `./build.sh` → `FreeMyTV.apk`. Keep `freemytv.keystore`: updates must be signed with the same key.
 6. **Install:** `adb connect <IP>:5555`. The TV asks *Allow USB debugging?*: tell them to accept and tick *Always
    allow*. Then `adb install -r FreeMyTV.apk`. If it hangs, Google Play Protect is asking on the TV (Android 14:
@@ -224,6 +225,10 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   Built with `--generic`, the place values are empty and `Place` fills them from the TV's time zone
   (`app/assets/zones.json`, written by `tools/make_zones.py` with `web/zones.js`).
   What the person changes on the TV (`Prefs`: Home Settings, Shelf, Remote Buttons, Sleep Timer) wins over those first values.
+- `ImmichPhotos` (with `immich_server` and `immich_api_key`): every 6 hours, on the home screen's resume, a random
+  choice from the server (`POST /api/search/random`, or one album, `Prefs.photoSource`) is downloaded one photo at a
+  time into `Photos.privateInbox` and imported right away, so at most one original is on disk. `build.sh` writes
+  `network_security_config.xml`: HTTPS only, except the host of an `http://` `immich_server`.
 - Settings rows that need something this TV lacks stay, dimmed as *Unavailable*: `SettingsActivity.need` names what a
   row needs, `Capabilities.missing` says why it's missing (once per screen), and OK on the row shows it in a toast.
 - The remote's app buttons (`RemoteKeys`, `RemoteKeyService`) use each brand's key codes: they run only on TCL,

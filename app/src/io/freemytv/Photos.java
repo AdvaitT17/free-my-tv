@@ -3,16 +3,13 @@ package io.freemytv;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.BitmapRegionDecoder;
 import android.graphics.Matrix;
-import android.graphics.Rect;
 import android.media.ExifInterface;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -28,8 +25,8 @@ import java.util.concurrent.Executors;
  * Your own photos. A computer puts them in the app's external files folder (tools/photos.py: adb push to
  * Android/data/io.freemytv/files/photos, no permission needed) or, where adb can't reach it, through PhotoInbox; the
  * next time the home screen, the screensaver or the settings open, each one is imported once into the app's private
- * folder, turned upright (EXIF), cropped to 16:9 and re-encoded at the screensaver's size (which also drops its GPS and
- * other tags), and the original is deleted. While they are on (Home Settings > My Photos), the screensaver shows them
+ * folder, turned upright (EXIF), made to fit the screensaver's size whole (never cropped) and re-encoded (which also drops
+ * its GPS and other tags), and the original is deleted. While they are on (Home Settings > My Photos), the screensaver shows them
  * instead of the picks' photos, in the order they came, and without picks (no TMDB key) one of them is the home
  * screen's background, a new one every hour.
  */
@@ -269,6 +266,19 @@ final class Photos {
         return count;
     }
 
+    /** Imports what's waiting now, on the caller's thread (ImmichPhotos, between two downloads). */
+    static int importWaiting(Context c) {
+        return importNow(c.getApplicationContext());
+    }
+
+    /** Deletes the oldest imported photos past `keep` (their names start with the import time). */
+    static synchronized void dropOldest(Context c, int keep) {
+        File[] all = dir(c).listFiles((d, name) -> name.endsWith(".jpg"));
+        if (all == null || all.length <= keep) return;
+        Arrays.sort(all);
+        for (int i = 0; i < all.length - Math.max(0, keep); i++) all[i].delete();
+    }
+
     /** Deletes the imported photos and whatever is still waiting, half-sent ones included. */
     static void removeAll(Context c) {
         clear(dir(c));
@@ -288,11 +298,10 @@ final class Photos {
     }
 
     /**
-     * The photo upright (EXIF), its center cropped to w:h and filtered down to w × h; null if too small or unreadable.
-     * Only that 16:9 band is decoded (BitmapRegionDecoder), subsampled while it stays about w × h: portrait, 8 MP and
-     * 24 MP photos no longer come out 1.3–1.4× upscaled, and a 24 MP one still decodes at 3000 × 1688 (20 MB), not 48.
-     * Then it's drawn straight into the w × h result and only that is turned. Where the region decoder can't read the
-     * file, the whole photo is decoded instead, at about 4 MP at most (as before).
+     * The whole photo upright (EXIF), never cropped: filtered down to fit inside w × h (never enlarged), so a portrait
+     * or a panorama keeps its shape (the screensaver puts it on black or white). Decoded subsampled while it stays at
+     * least about that size (a 24 MP photo doesn't take 96 MB), then scaled and turned in one step; null if too small
+     * or unreadable.
      */
     private static Bitmap decode(File f, int w, int h) throws IOException {
         BitmapFactory.Options bounds = new BitmapFactory.Options();
@@ -302,56 +311,25 @@ final class Photos {
         if (Math.min(bounds.outWidth, bounds.outHeight) < MIN_SIDE) return null;
         int degrees = rotation(f);
         boolean sideways = degrees == 90 || degrees == 270;
-        // Everything below is in the photo's stored orientation: a sideways one is cropped and sized as h × w.
-        int tw = sideways ? h : w, th = sideways ? w : h;
-        float ratio = (float) tw / th;
-        int cw = Math.min(bounds.outWidth, Math.round(bounds.outHeight * ratio));
-        int ch = Math.min(bounds.outHeight, Math.round(cw / ratio));
-        Rect band = new Rect((bounds.outWidth - cw) / 2, (bounds.outHeight - ch) / 2, (bounds.outWidth + cw) / 2,
-                (bounds.outHeight + ch) / 2);
+        // Upright size, and the size it ends at (fitted inside w × h)
+        int uw = sideways ? bounds.outHeight : bounds.outWidth, uh = sideways ? bounds.outWidth : bounds.outHeight;
+        float fit = Math.min(1f, Math.min((float) w / uw, (float) h / uh));
+        int tw = Math.max(1, Math.round(uw * fit)), th = Math.max(1, Math.round(uh * fit));
+        // The same in the file's stored orientation
+        int sw = sideways ? th : tw, sh = sideways ? tw : th;
         BitmapFactory.Options opts = new BitmapFactory.Options();
         opts.inSampleSize = 1;
-        // Halved while it stays within 10% of the result: a 12 MP photo's band decodes at 2000 px for 2112 (9 MB, not
-        // 36), and nothing comes out more than 1.1× upscaled.
-        while (cw / (opts.inSampleSize * 2) >= tw * 0.9f && ch / (opts.inSampleSize * 2) >= th * 0.9f) opts.inSampleSize *= 2;
-        Bitmap src = null;
-        Rect from;
-        // From a FileDescriptor, which maps the file: the path form copies all of it into memory (8–12 MB for a 24 MP
-        // JPEG).
-        try (FileInputStream in = new FileInputStream(f)) {
-            BitmapRegionDecoder region = BitmapRegionDecoder.newInstance(in.getFD(), false);
-            try {
-                src = region.decodeRegion(band, opts);
-            } finally {
-                region.recycle();
-            }
-        } catch (IOException | RuntimeException e) {
-            AppLog.w("photos: " + f.getName() + " read whole: " + e.getMessage());
+        while (bounds.outWidth / (opts.inSampleSize * 2) >= sw * 0.9f && bounds.outHeight / (opts.inSampleSize * 2) >= sh * 0.9f) {
+            opts.inSampleSize *= 2;
         }
-        if (src != null) {
-            from = new Rect(0, 0, src.getWidth(), src.getHeight());
-        } else {
-            // Whole, sampled to about 4 MP at most, as before: at the band's sample size a sideways 12 MP photo would
-            // take 48 MB, a 20000 × 4000 panorama 80.
-            while ((long) bounds.outWidth * bounds.outHeight > 4_000_000L * opts.inSampleSize * opts.inSampleSize) {
-                opts.inSampleSize *= 2;
-            }
-            src = BitmapFactory.decodeFile(f.getPath(), opts);
-            if (src == null) return null;
-            float sx = (float) src.getWidth() / bounds.outWidth, sy = (float) src.getHeight() / bounds.outHeight;
-            from = new Rect(Math.round(band.left * sx), Math.round(band.top * sy), Math.round(band.right * sx),
-                    Math.round(band.bottom * sy));
-        }
-        Bitmap out = Bitmap.createBitmap(tw, th, Bitmap.Config.ARGB_8888);
-        new android.graphics.Canvas(out).drawBitmap(src, from, new Rect(0, 0, tw, th),
-                new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG | android.graphics.Paint.DITHER_FLAG));
-        src.recycle();
-        if (degrees == 0) return out;
+        Bitmap src = BitmapFactory.decodeFile(f.getPath(), opts);
+        if (src == null) return null;
         Matrix m = new Matrix();
-        m.setRotate(degrees);
-        Bitmap turned = Bitmap.createBitmap(out, 0, 0, tw, th, m, true);
-        if (turned != out) out.recycle();
-        return turned;
+        m.setScale((float) sw / src.getWidth(), (float) sh / src.getHeight());
+        if (degrees != 0) m.postRotate(degrees);
+        Bitmap out = Bitmap.createBitmap(src, 0, 0, src.getWidth(), src.getHeight(), m, true);
+        if (out != src) src.recycle();
+        return out;
     }
 
     private static int rotation(File f) {
