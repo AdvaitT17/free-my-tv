@@ -53,7 +53,9 @@ var TV = (function () {
 
   // webOS 6 gives Developer Mode apps only the "public" group, which leaves out listLaunchPoints. There the list comes
   // from the TV's remote control API on 127.0.0.1:3000 (the one LG's phone app uses), which takes file:// pages.
-  // The TV asks once to allow it; the key it gives back is kept.
+  // The TV asks once to allow it; the key it gives back is kept. Newer firmware gives the page its own origin
+  // (file://<app id>-webos), which the API refuses with 1008 "invalid origin": there our JS service (webos/service)
+  // makes the call.
   var SSAP_KEY = 'fmtv.ssapKey', SSAP_REFUSED = 'fmtv.ssapRefused';
 
   /** One call to the remote control API; done(result) with null on failure. */
@@ -89,7 +91,23 @@ var TV = (function () {
         finish(m.type !== 'error' && m.payload && m.payload.returnValue !== false ? m.payload : null);
       }
     };
-    ws.onerror = ws.onclose = function () { finish(null); };
+    ws.onerror = function () { finish(null); };
+    ws.onclose = function (event) {
+      if (event.code === 1008 && !finished) viaService(); else finish(null);
+    };
+    function viaService() {
+      clearTimeout(timer);
+      timer = setTimeout(function () { finish(null); }, 100000);   // the service waits 90 s for the prompt
+      luna('luna://' + self + '.service/ssap', {uri: uri, clientKey: key}, function (res) {
+        if (res && res.clientKey) {
+          try { localStorage.setItem(SSAP_KEY, res.clientKey); } catch (e) {}
+        }
+        if (res && res.refused) {
+          try { localStorage.setItem(SSAP_REFUSED, '1'); } catch (e) {}   // the person said no on the TV
+        }
+        finish(res && res.payload && res.payload.returnValue !== false ? res.payload : null);
+      });
+    }
   }
 
   // LG inputs: the antenna and the four HDMI ports, with the apps LG opens for them.
