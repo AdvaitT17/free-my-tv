@@ -74,9 +74,14 @@ final class Recs {
     /** How often Trakt is asked whether the account changed (marked watched, the watchlist): one small request. */
     private static final long TRAKT_EVERY = 10 * 60_000L;
     /** Bump when what is saved for each title changes (the saved list is discarded and fetched again). */
-    private static final int CACHE_VERSION = 5;
+    private static final int CACHE_VERSION = 6;   // 6: lists of up to POOL + TRAKT_MAX
     /** TMDB's picks kept besides the Trakt ones: enough that each tab still fills its cards after the franchise filter. */
-    private static final int POOL = 60;
+    /** TMDB's titles in the list (trending, then the new releases), as on main. */
+    private static final int POOL = 24;
+    /** Trakt's titles in the list: about what the tabs show of them (now(): up to 2 in 5 in progress, 3 in 5 liked). */
+    private static final int TRAKT_MAX = MAX_CARDS;
+    /** Images kept on disk: a backdrop and a poster for every title the list can hold. */
+    private static final int FILES = 2 * (POOL + TRAKT_MAX);
     /** Pick.mine: what they're in the middle of, and what they'd like (watchlist, Trakt's recommendations). */
     private static final int PROGRESS = 1, LIKED = 2;
     private static final int MANHA = 0, TARDE = 1, NOITE = 2;
@@ -424,7 +429,12 @@ final class Recs {
                         AppLog.w("trakt activity: " + e.getMessage());
                     }
                 }
-                if (list) fetchList(p);
+                if (list) {
+                    // Only the Trakt account changed: the titles already in the list keep their details.
+                    Map<String, Pick> known = new HashMap<>();
+                    if (!stale) for (Pick k : picks) if (k.detailed) known.put(key(k), k);
+                    fetchList(p, known);
+                }
                 // One failing title doesn't stop the others; whatever has no app on the TV is not downloaded.
                 int failures = 0, tried = 0;
                 String last = "";
@@ -495,8 +505,13 @@ final class Recs {
         if (!hasKey(context) || fetching) return;
         long sinceFail = System.currentTimeMillis() - failedAt;
         if (failedAt != 0 && sinceFail >= 0 && sinceFail < 10 * 60_000L) return;
+        // The list's titles only up to what prune() keeps: more would be downloaded again every minute.
+        List<Pick> list = picks;
         List<Pick> todo = new ArrayList<>();
-        for (Pick p : picks) if (!p.detailed || (p.pkg != null && !hasImage(p))) todo.add(p);
+        for (int i = 0; i < list.size() && i < POOL + TRAKT_MAX; i++) {
+            Pick p = list.get(i);
+            if (!p.detailed || (p.pkg != null && !hasImage(p))) todo.add(p);
+        }
         if (todo.isEmpty()) return;
         fetching = true;
         io.execute(() -> {
@@ -547,7 +562,7 @@ final class Recs {
 
     // MARK: - TMDB
 
-    private void fetchList(int p) throws Exception {
+    private void fetchList(int p, Map<String, Pick> known) throws Exception {
         // None of the services we know is on the TV (or hide_services hides them all): no region would change that.
         boolean any = false;
         for (String[] s : SERVICES) any |= installed(s[2]);
@@ -591,7 +606,7 @@ final class Recs {
             for (Pick pick : candidates) {
                 if (watched.contains(key(pick))) continue;
                 try {
-                    fetchDetails(pick);
+                    if (!reuse(pick, known)) fetchDetails(pick);
                 } catch (Exception e) {
                     continue;
                 }
@@ -625,16 +640,26 @@ final class Recs {
         List<Pick> progress = new ArrayList<>(), listMovies = new ArrayList<>(), listShows = new ArrayList<>();
         List<Pick> recMovies = new ArrayList<>(), recShows = new ArrayList<>();
         if (trakt != null) {
+            // Up to TRAKT_MAX, about what the tabs show: in progress, up to what a tab shows of each kind; then the
+            // watchlist and the recommendations, movies and shows alike. Each title costs a TMDB request, so once
+            // there are enough the rest aren't looked up.
+            int few = MAX_CARDS * 2 / 5, movieCount = 0, showCount = 0;
             for (Trakt.Progress pr : trakt.progress) {
+                boolean movie = pr.key.startsWith("movie:");
+                if ((movie ? movieCount : showCount) >= few) continue;
                 String tag = pr.season == 0 ? Ui.tr("Continue watching")
                         : pr.paused ? Ui.trf("Continue: S{s} E{e}", "s", pr.season, "e", pr.episode)
                         : Ui.trf("Up next: S{s} E{e}", "s", pr.season, "e", pr.episode);
-                fromTrakt(pr.key, tag, PROGRESS, progress);
+                if (fromTrakt(pr.key, tag, PROGRESS, progress, known)) {
+                    if (movie) movieCount++;
+                    else showCount++;
+                }
             }
-            for (String k : trakt.watchlistMovies) if (!watched.contains(k)) fromTrakt(k, Ui.tr("On your watchlist"), LIKED, listMovies);
-            for (String k : trakt.watchlistShows) if (!watched.contains(k)) fromTrakt(k, Ui.tr("On your watchlist"), LIKED, listShows);
-            for (String k : trakt.recommendedMovies) if (!watched.contains(k)) fromTrakt(k, Ui.tr("Recommended on Trakt"), LIKED, recMovies);
-            for (String k : trakt.recommendedShows) if (!watched.contains(k)) fromTrakt(k, Ui.tr("Recommended on Trakt"), LIKED, recShows);
+            int each = (TRAKT_MAX - progress.size() + 1) / 2;
+            for (String k : trakt.watchlistMovies) if (listMovies.size() < each && !watched.contains(k)) fromTrakt(k, Ui.tr("On your watchlist"), LIKED, listMovies, known);
+            for (String k : trakt.watchlistShows) if (listShows.size() < each && !watched.contains(k)) fromTrakt(k, Ui.tr("On your watchlist"), LIKED, listShows, known);
+            for (String k : trakt.recommendedMovies) if (listMovies.size() + recMovies.size() < each && !watched.contains(k)) fromTrakt(k, Ui.tr("Recommended on Trakt"), LIKED, recMovies, known);
+            for (String k : trakt.recommendedShows) if (listShows.size() + recShows.size() < each && !watched.contains(k)) fromTrakt(k, Ui.tr("Recommended on Trakt"), LIKED, recShows, known);
             // Only titles on one of the TV's apps show; the log says how many that left.
             AppLog.w("trakt: " + trakt.progress.size() + " in progress (" + progress.size() + " on the TV's apps), "
                     + (trakt.watchlistMovies.size() + trakt.watchlistShows.size()) + " on the watchlist (" + (listMovies.size() + listShows.size())
@@ -645,8 +670,8 @@ final class Recs {
         List<Pick> list = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (Pick x : progress) if (seen.add(key(x))) list.add(x);
-        alternate(list, seen, listMovies, listShows, Integer.MAX_VALUE);
-        alternate(list, seen, recMovies, recShows, Integer.MAX_VALUE);
+        alternate(list, seen, listMovies, listShows, TRAKT_MAX);
+        alternate(list, seen, recMovies, recShows, TRAKT_MAX);
         int ours = list.size();
         alternate(list, seen, hotMovies, hotShows, ours + POOL);
         alternate(list, seen, newMovies, newShows, ours + POOL);
@@ -658,7 +683,7 @@ final class Recs {
     }
 
     /** A Trakt title ("movie:603") with its details, added to `out` when it's on one of the TV's services. */
-    private void fromTrakt(String k, String tag, int mine, List<Pick> out) {
+    private boolean fromTrakt(String k, String tag, int mine, List<Pick> out, Map<String, Pick> known) {
         Pick p = new Pick();
         p.kind = k.substring(0, k.indexOf(':'));
         p.id = Integer.parseInt(k.substring(k.indexOf(':') + 1));
@@ -666,11 +691,30 @@ final class Recs {
         p.tag = tag;
         p.mine = mine;
         try {
-            fetchDetails(p);
+            if (!reuse(p, known)) fetchDetails(p);
         } catch (Exception e) {
-            return;
+            return false;
         }
-        if (p.pkg != null && p.backdrop != null) out.add(p);
+        if (p.pkg == null || p.backdrop == null) return false;
+        out.add(p);
+        return true;
+    }
+
+    /** The details of the same title in the list before (`known`), with this one's tag; false: not there. */
+    private static boolean reuse(Pick p, Map<String, Pick> known) {
+        Pick k = known.get(key(p));
+        if (k == null) return false;
+        p.title = k.title;
+        p.backdrop = k.backdrop;
+        p.poster = k.poster;
+        p.app = k.app;
+        p.pkg = k.pkg;
+        p.link = k.link;
+        String meta = k.meta == null ? "" : k.meta;
+        if (k.tag != null && meta.startsWith(k.tag)) meta = meta.substring(k.tag.length()).replaceFirst("^ · ", "");
+        p.meta = p.tag == null ? meta : meta.isEmpty() ? p.tag : p.tag + " · " + meta;
+        p.detailed = true;
+        return true;
     }
 
     /** Language of titles and genres (TMDB's "fr-FR", "zh-CN"…); the services come from the region. */
@@ -1184,9 +1228,9 @@ final class Recs {
             if (parts[i].lastModified() < stale) parts[i].delete();
         }
         File[] files = dir.listFiles((d, name) -> !name.endsWith(".part"));
-        if (files == null || files.length <= 60) return;
+        if (files == null || files.length <= FILES) return;
         Arrays.sort(files, (a, b) -> Long.compare(a.lastModified(), b.lastModified()));
-        for (int i = 0; i < files.length - 60; i++) {
+        for (int i = 0; i < files.length - FILES; i++) {
             //noinspection ResultOfMethodCallIgnored
             files[i].delete();
         }
