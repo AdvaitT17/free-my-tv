@@ -75,7 +75,6 @@ final class Recs {
     private static final long TRAKT_EVERY = 10 * 60_000L;
     /** Bump when what is saved for each title changes (the saved list is discarded and fetched again). */
     private static final int CACHE_VERSION = 6;   // 6: lists of up to POOL + TRAKT_MAX
-    /** TMDB's picks kept besides the Trakt ones: enough that each tab still fills its cards after the franchise filter. */
     /** TMDB's titles in the list (trending, then the new releases), as on main. */
     private static final int POOL = 24;
     /** Trakt's titles in the list: about what the tabs show of them (now(): up to 2 in 5 in progress, 3 in 5 liked). */
