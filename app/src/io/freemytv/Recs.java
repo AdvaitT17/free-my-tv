@@ -274,9 +274,14 @@ final class Recs {
         List<Pick> out = new ArrayList<>();
         java.util.Set<String> seen = new java.util.HashSet<>();
         int cards = Prefs.cards();
+        boolean plex = false;
         for (int i = 0; i < list.size() && out.size() < cards; i++) {
             Pick p = list.get((int) ((hour * cards + i) % list.size()));
-            if (seen.add(franchise(p.title))) out.add(p);
+            if (p.id < 0 && plex) continue;   // a Plex title is the surprise: one per tab, not the movie and the show together
+            if (seen.add(franchise(p.title))) {
+                out.add(p);
+                plex |= p.id < 0;
+            }
         }
         return out;
     }
@@ -506,15 +511,18 @@ final class Recs {
         List<Pick> newMovies = new ArrayList<>(), newShows = new ArrayList<>();
         for (int i = 0; i < movies.length(); i++) add(newMovies, movies.getJSONObject(i), "movie");
         for (int i = 0; i < shows.length(); i++) add(newShows, shows.getJSONObject(i), "tv");
-        // One title of your Plex library per tab and hour (one of the newest, a different one each hour) among the
-        // trending ones: a surprise, not half the row.
+        // One title of your Plex library per kind (one of the newest 8, another each time the list is made) among the
+        // trending ones: a surprise, not half the row. Its images come now, so a server that sleeps later leaves no gray card.
         if (plexOn()) {
             try {
-                hotMovies = interleave(hotMovies, oneOf(plexPicks("movie"), p));
-                hotShows = interleave(hotShows, oneOf(plexPicks("tv"), p));
+                long turn = System.currentTimeMillis() / 3600_000L;
+                hotMovies = interleave(hotMovies, withImages(oneOf(plexPicks("movie"), (int) turn)));
+                hotShows = interleave(hotShows, withImages(oneOf(plexPicks("tv"), (int) turn)));
             } catch (Exception e) {
                 AppLog.w("plex: " + e);
             }
+        } else if (!Config.PLEX_URL.trim().isEmpty()) {
+            AppLog.w("plex: plex_url must be an https://….plex.direct address (and plex_token set): ignored");
         }
         // Trending first, then the new releases; movies and shows alternating, without repeats, up to 24.
         List<Pick> list = new ArrayList<>();
@@ -543,6 +551,20 @@ final class Recs {
     private static List<Pick> oneOf(List<Pick> list, int period) {
         List<Pick> out = new ArrayList<>();
         if (!list.isEmpty()) out.add(list.get(Math.floorMod(period, list.size())));
+        return out;
+    }
+
+    /** The picks whose backdrop could be downloaded (the poster is a bonus: without it the card crops the backdrop). */
+    private List<Pick> withImages(List<Pick> list) {
+        List<Pick> out = new ArrayList<>();
+        for (Pick pick : list) {
+            try {
+                download(pick);
+                out.add(pick);
+            } catch (IOException e) {
+                AppLog.w("plex image: " + e.getMessage());
+            }
+        }
         return out;
     }
 
@@ -819,8 +841,16 @@ final class Recs {
 
     // MARK: - Plex (your own library: config.properties "plex_url" and "plex_token")
 
+    /** Only Plex's own https://….plex.direct address (it has a valid certificate): a typo never gets the account token. */
     private static boolean plexOn() {
-        return !Config.PLEX_URL.trim().isEmpty() && !Config.PLEX_TOKEN.trim().isEmpty();
+        String url = Config.PLEX_URL.trim();
+        if (Config.PLEX_TOKEN.trim().isEmpty() || !url.startsWith("https://")) return false;
+        try {
+            String host = new java.net.URI(url).getHost();
+            return host != null && host.endsWith(".plex.direct");
+        } catch (java.net.URISyntaxException e) {
+            return false;
+        }
     }
 
     /** The connection to the server, with the usual certificate checks: plex_url is Plex's own https://...plex.direct address. */
