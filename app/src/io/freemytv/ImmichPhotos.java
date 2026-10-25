@@ -1,8 +1,10 @@
 package io.freemytv;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -21,7 +23,8 @@ import java.util.concurrent.Executors;
 /**
  * My Photos from an Immich server (immich_server and immich_api_key in config.properties): every 6 hours, a random
  * choice of its photos goes through the same import as the ones a computer sends (Photos: upright, whole, the
- * screensaver's size), one at a time, so at most one original is on disk at once. The oldest go to make room.
+ * screensaver's size), one at a time, so at most one original is on disk at once. The oldest go to make room. Only on
+ * a TV with the Immich app (APP): elsewhere My Photos stays as it was, even with a server set.
  */
 final class ImmichPhotos {
     private ImmichPhotos() {}
@@ -40,8 +43,30 @@ final class ImmichPhotos {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile boolean running;
 
-    static boolean configured() {
-        return !Config.IMMICH_SERVER.trim().isEmpty() && !Config.IMMICH_KEY.trim().isEmpty();
+    /**
+     * Immich's own Android TV app. Its server and key are its private data, so ours stay in config.properties; the app
+     * being there is what says this TV is meant to show Immich.
+     */
+    static final String APP = "nl.giejay.android.tv.immich";
+    private static volatile boolean appThere;
+    private static volatile long appCheckedAt = -1;
+
+    /** A server and a key in config.properties, and the Immich app on this TV (looked up again every 30 s at most). */
+    static boolean configured(Context c) {
+        if (Config.IMMICH_SERVER.trim().isEmpty() || Config.IMMICH_KEY.trim().isEmpty()) return false;
+        long now = SystemClock.uptimeMillis();
+        if (appCheckedAt < 0 || now - appCheckedAt > 30_000) {
+            boolean there;
+            try {
+                c.getPackageManager().getApplicationInfo(APP, 0);
+                there = true;
+            } catch (PackageManager.NameNotFoundException e) {
+                there = false;
+            }
+            appThere = there;
+            appCheckedAt = now;
+        }
+        return appThere;
     }
 
     /** An album with photos in it: what My Photos can show. */
@@ -58,8 +83,8 @@ final class ImmichPhotos {
     static volatile java.util.List<Album> albums = new java.util.ArrayList<>();
 
     /** Reads the albums in the background; `done` runs on the main thread when they're in. */
-    static void loadAlbums(Runnable done) {
-        if (!configured()) return;
+    static void loadAlbums(Context c, Runnable done) {
+        if (!configured(c)) return;
         WORKER.execute(() -> {
             try {
                 JSONArray all = new JSONArray(request("/api/albums", null));
@@ -89,7 +114,7 @@ final class ImmichPhotos {
 
     /** Starts a sync in the background when one is due (and My Photos is on); `ready` runs on the main thread after. */
     static void syncIfDue(Context c, Runnable ready) {
-        if (!configured() || !Prefs.photos() || "default".equals(Prefs.photoSource()) || running) return;
+        if (!configured(c) || !Prefs.photos() || "default".equals(Prefs.photoSource()) || running) return;
         Context app = c.getApplicationContext();
         File stamp = new File(app.getFilesDir(), "immich-sync");
         if (Math.abs(System.currentTimeMillis() - stamp.lastModified()) < EVERY_MS) return;   // 0 when never

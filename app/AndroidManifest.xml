@@ -41,6 +41,8 @@
         <package android:name="com.peacock.peacockfiretv" />
         <package android:name="com.globo.globotv" />
         <package android:name="com.spotify.tv.android" />
+        <!-- Immich's app: My Photos offers its server only where it is installed (ImmichPhotos.APP) -->
+        <package android:name="nl.giejay.android.tv.immich" />
         <package android:name="com.tcl.tv" />
         <package android:name="com.google.android.tv" />
         <package android:name="com.mediatek.wwtv.tvcenter" />

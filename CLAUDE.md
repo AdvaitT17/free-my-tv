@@ -225,7 +225,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   Built with `--generic`, the place values are empty and `Place` fills them from the TV's time zone
   (`app/assets/zones.json`, written by `tools/make_zones.py` with `web/zones.js`).
   What the person changes on the TV (`Prefs`: Home Settings, Shelf, Remote Buttons, Sleep Timer) wins over those first values.
-- `ImmichPhotos` (with `immich_server` and `immich_api_key`): every 6 hours, on the home screen's resume, a random
+- `ImmichPhotos` (with `immich_server` and `immich_api_key`, and only where Immich's Android TV app, `ImmichPhotos.APP`,
+  is installed; without it My Photos is unchanged): every 6 hours, on the home screen's resume, a random
   choice from the server (`POST /api/search/random`, or one album, `Prefs.photoSource`) is downloaded one photo at a
   time into `Photos.privateInbox` and imported right away, so at most one original is on disk. `build.sh` writes
   `network_security_config.xml`: HTTPS only, except the host of an `http://` `immich_server`.

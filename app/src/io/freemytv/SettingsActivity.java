@@ -747,7 +747,7 @@ public class SettingsActivity extends Activity {
             int photos = Photos.files(getContext()).size();
             v[PHOTOS_ROW] = photos == 0 ? Ui.tr("photos|None")
                     : Prefs.photos() ? Ui.plural("plural|one:{n} photo|other:{n} photos", photos) : Ui.tr("Off");
-            if (ImmichPhotos.configured()) v[PHOTOS_ROW] = immichPhotosValue(photos);
+            if (ImmichPhotos.configured(getContext())) v[PHOTOS_ROW] = immichPhotosValue(photos);
             v[4] = onOff(Prefs.sounds());
             v[5] = onOff(Prefs.weather());
             v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
@@ -1011,7 +1011,7 @@ public class SettingsActivity extends Activity {
                     break;
                 }
                 case PHOTOS_ROW:
-                    if (ImmichPhotos.configured()) return;   // OK opens the choice of source
+                    if (ImmichPhotos.configured(getContext())) return;   // OK opens the choice of source
                     if (Photos.files(getContext()).isEmpty()) return;
                     Prefs.setPhotos(!Prefs.photos());
                     return;
@@ -1076,7 +1076,7 @@ public class SettingsActivity extends Activity {
         private String immichPhotosValue(int photos) {
             if (!albumsAsked) {
                 albumsAsked = true;
-                ImmichPhotos.loadAlbums(this::invalidate);
+                ImmichPhotos.loadAlbums(getContext(), this::invalidate);
             }
             String source = Prefs.photoSource();
             if ("default".equals(source)) return Ui.tr("photos|Default");
@@ -1108,7 +1108,7 @@ public class SettingsActivity extends Activity {
                     return;
                 }
                 // Not read yet: the list opens when they come
-                ImmichPhotos.loadAlbums(() -> {
+                ImmichPhotos.loadAlbums(getContext(), () -> {
                     if (screen == PICKER && pickFor == PICK_PHOTOS && !ImmichPhotos.albums.isEmpty()) {
                         openAlbums();
                         spoken.focusMoved();
@@ -1354,7 +1354,7 @@ public class SettingsActivity extends Activity {
             // A list longer than the screen says where we are in it, as the app picker does. Photos say where they come
             // from; on the Sleep Timer screen, the timer and Position open a list on OK.
             String where = rows < labels.length ? (from + focus + 1) + " / " + labels.length + "  ·  " : "";
-            c.drawText(where + (screen == HOME_SETTINGS && from + focus == PHOTOS_ROW ? (ImmichPhotos.configured()
+            c.drawText(where + (screen == HOME_SETTINGS && from + focus == PHOTOS_ROW ? (ImmichPhotos.configured(getContext())
                     ? Ui.tr("OK chooses where they come from: default, Immich or an album.")
                     : Photos.files(getContext()).isEmpty()
                     ? Ui.tr("Send them from a computer: see “Your own photos” in the README.")
@@ -1418,7 +1418,7 @@ public class SettingsActivity extends Activity {
             } else if (screen == HOME_SETTINGS && pickScroll + focus == CITY_ROW) {
                 askCity();
                 return;
-            } else if (screen == HOME_SETTINGS && pickScroll + focus == PHOTOS_ROW && ImmichPhotos.configured()) {
+            } else if (screen == HOME_SETTINGS && pickScroll + focus == PHOTOS_ROW && ImmichPhotos.configured(getContext())) {
                 openPhotoSources();
             } else if (screen == HOME_SETTINGS && pickScroll + focus == PHOTOS_ROW) {
                 askRemovePhotos();
