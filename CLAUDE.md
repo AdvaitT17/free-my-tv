@@ -324,7 +324,10 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   home: it opens the package in `persist.sys.home.selectpkg`, else the HTC one, and with that off and the property
   empty, a black screen. Their adb shell runs as root, so the switch sets the property (`HomeMode.JM_HOME`) and only
   then turns the HTC home off; Original and the watchdog put both back. Wireless debugging's port changes and turns
-  itself off, but adb also listens on 5555 there.
+  itself off, but adb also listens on 5555 there. They carry `com.htc.htcsettings` too, but any change in its keystone
+  or zoom crashes it (`SecurityException`: SurfaceFlinger doesn't know the Allwinner request code 1050): their own is
+  `com.softwinner.tcorrection/.projection.ProjectionSettingActivity`, which the Keystone shortcut opens where it's
+  installed.
 - Xiaomi's Chinese firmware (MIUI TV; Redmi `MiTV-MFTP0`, Android 9 tested) has no passthrough handler either: its own
   `com.xiaomi.mitv.tvplayer/.ExternalSourceActivity` (action `com.xiaomi.mitv.tvplayer.EXTSRC_PLAY`) opens a port from
   an `input` extra (HDMI 1 to 3 are 23 to 25; there is no number for a fourth), so `inputs` keeps HDMI 1 to 3 there.

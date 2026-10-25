@@ -312,7 +312,12 @@ final class HomeApps {
         items.add(shortcut(ANDROID_SETTINGS, "tv-settings", Ui.tr("TV Settings"), "tv_settings"));
         // HY300 projectors (Hotack, Allwinner H713): keystone and focus live in the maker's settings app, and the
         // stock home screen was the only way to its Miracast receiver. Each shows only where the TV has it.
-        device(c, items, "keystone", Ui.tr("Keystone"), "keystone", new Intent("action.htcsettings.prjsettings"));
+        // The Amlogic ones (txhd2) carry the HTC app too, but its keystone crashes there (SurfaceFlinger refuses code
+        // 1050): their own is com.softwinner.tcorrection, so that one wins where it's installed.
+        Intent tcorrection = new Intent().setComponent(new ComponentName("com.softwinner.tcorrection",
+                "com.softwinner.tcorrection.projection.ProjectionSettingActivity"));
+        device(c, items, "keystone", Ui.tr("Keystone"), "keystone",
+                c.getPackageManager().resolveActivity(tcorrection, 0) != null ? tcorrection : new Intent("action.htcsettings.prjsettings"));
         device(c, items, "mirroring", Ui.tr("Screen Mirroring"), "cast",
                 new Intent().setComponent(new ComponentName("com.softwinner.miracastReceiver", "com.softwinner.miracastReceiver.Miracast")));
         return items;

@@ -57,6 +57,7 @@
         <package android:name="com.mediatek.tv.oneworld.tvcenter" />
         <!-- HY300 projectors: keystone and Miracast (drawer shortcuts), Allwinner's player for HDMI; MIUI TV's source player -->
         <package android:name="com.htc.htcsettings" />
+        <package android:name="com.softwinner.tcorrection" />
         <package android:name="com.softwinner.miracastReceiver" />
         <package android:name="com.softwinner.awlivetv" />
         <package android:name="com.xiaomi.mitv.tvplayer" />
