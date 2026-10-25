@@ -909,7 +909,11 @@ public class SettingsActivity extends Activity {
         private void traktOk() {
             Context c = getContext();
             if (!Trakt.signedIn(c)) {
-                Trakt.signIn(c, () -> handler.post(this::invalidate));
+                // TalkBack reads the row again at each step: the code as it appears, then signed in (or why not).
+                Trakt.signIn(c, () -> handler.post(() -> {
+                    invalidate();
+                    spoken.focusMoved();
+                }));
                 return;
             }
             String user = Trakt.user(c).isEmpty() ? "Trakt" : Trakt.user(c);
