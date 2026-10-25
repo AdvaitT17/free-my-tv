@@ -85,6 +85,8 @@ If you built Free My TV yourself before, switch back to *Original* and uninstall
    ```
 5. **On the TV**, open *Free My TV* → *Home Screen* → *Free My TV*. The TV asks *Allow USB debugging?* once more, now for Free My TV itself: tick *Always allow* and accept. (Run `adb disconnect 192.168.1.50:5555` first: on Android 8 to 10 the TV can hand that answer to a computer that's still connected.)
 
+   On some TCL TVs (Android 11, Realtek), a second background killer, TGuard, can stop the switch while it measures the original home screen (you see the stock launcher flash by). The TV runs the switch again by itself within about a minute: if the screen stays on "Measuring…", wait a minute and press Home. Free My TV opening means it went through.
+
 ## LG TVs (webOS)
 
 The same home screen as an LG app: the picks, the glass shelf with your apps, the drawer with inputs, weather and prices, day and night, Home Settings and the shelf editor. It installs through LG's own Developer Mode, with nothing rooted or changed on the TV. LG's home screen stays where it is, and Free My TV is one press of a number key away (or in LG's app list, on remotes without them).

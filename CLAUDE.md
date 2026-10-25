@@ -39,6 +39,15 @@ before you do it, and let them do the taps on the TV.
    TCL's `TclAppBoot` blocks background jobs by default, so the switch (and the watchdog) never run. The log shows
    `forbid bind service ... ModeJob`. Some TCL firmware has neither (a 2024 MediaTek Google TV, Android 14, has no
    `TclAppBoot`): both names answer `Unknown operation string`, and nothing needs allowing.
+   Some TCL firmware (a "Smart TV Pro", Realtek RTD2880, Android 11, build `RP1A200622.001`; the same TV as #264) also
+   has a second, separate background killer, `TGuard` (`com.tcl.guard`), which kills the app's processes about a second
+   after any other app comes to the front. The switch's benchmark opens the original home screen a few times (that's
+   the launcher flashing by during "Measuring…"), so TGuard can kill `ModeJob` there (log: `TGuardMemoryManagerKillHandler
+   ... tguard-kill`, then `Scheduling restart of crashed service io.freemytv/.ModeJob`). The JobScheduler runs the job
+   again by itself within about a minute, and a benchmark that fails only logs now (it used to read as "Couldn't turn on
+   Free My TV: Read timed out", #277). Tell them: if the screen stops on "Measuring…", wait a minute, then press Home;
+   Free My TV opening confirms the switch. No `adb`/`appops` setting turns TGuard off (its content providers aren't
+   exported to the shell user).
    Chromecast with Google TV (Android 14) refuses port 5555 even with USB debugging on: have them turn on *Wireless
    debugging*, pair with `adb pair <address:port> <code>` (the code is on the TV), then run `adb tcpip 5555` over that
    connection. It closes again at every restart (Wireless debugging turns itself off; `persist.adb.tcp.port` is

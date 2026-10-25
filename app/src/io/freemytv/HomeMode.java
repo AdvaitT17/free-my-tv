@@ -350,8 +350,7 @@ final class HomeMode {
             }
             if (metrics(latest, ORIGINAL) == null && !home.isEmpty()) {
                 busy(c, Ui.tr("Measuring the original home screen…"));
-                measureHomeTime(c, adb, ORIGINAL);
-                measureMemory(c, adb, ORIGINAL);
+                measure(c, adb, ORIGINAL, true);
             }
             busy(c, Ui.tr("Switching the home screen and screensaver…"));
             Watchdog.clear(c);
@@ -422,7 +421,7 @@ final class HomeMode {
             }
             notice(c, Ui.trf("Free My TV is on: new home screen and screensaver, {n} apps turned off.", "n", disabled.size()));
             busy(c, Ui.tr("Measuring Free My TV…"));
-            measureHomeTime(c, adb, FREE);
+            measure(c, adb, FREE, false);
             done(c, null);
             adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
             ModeJob.schedule(c, ModeJob.MEMORY, FREE, 120_000);
@@ -490,7 +489,7 @@ final class HomeMode {
                 notice(c, Ui.trf("Original mode, but I couldn't turn back on: {list}.", "list", String.join(", ", problems)));
             }
             busy(c, Ui.tr("Measuring the original home screen…"));
-            measureHomeTime(c, adb, ORIGINAL);
+            measure(c, adb, ORIGINAL, false);
             done(c, null);
             adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
             ModeJob.schedule(c, ModeJob.MEMORY, ORIGINAL, 120_000);
@@ -868,6 +867,17 @@ final class HomeMode {
     }
 
     // MARK: - Measurements (without opening apps: memory and the home button)
+
+    /** A failed measurement only logs: the switch itself went through (or is about to), and a TV may cut it short
+     *  (a TCL's TGuard kills the job once the original launcher is in front, and the error read as a failed switch, #277). */
+    private static void measure(Context c, Adb adb, String mode, boolean memory) {
+        try {
+            measureHomeTime(c, adb, mode);
+            if (memory) measureMemory(c, adb, mode);
+        } catch (Exception e) {
+            AppLog.w("measurement of " + mode + " failed: " + e.getMessage());
+        }
+    }
 
     private static void measureHomeTime(Context c, Adb adb, String mode) throws IOException, JSONException {
         List<Integer> samples = new ArrayList<>();
