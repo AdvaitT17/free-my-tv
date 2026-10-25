@@ -23,6 +23,27 @@ import webapp  # noqa: E402
 
 OUT = os.path.join(ROOT, 'out', 'webos')
 IPK = os.path.join(ROOT, 'FreeMyTV-webos.ipk')
+# A TV's app list and icons from webos/apps.py, for TVs that won't list their apps to the app (webOS 3).
+APP_LIST = os.path.join(ROOT, 'webos-apps.local.json')
+APP_ICONS = os.path.join(ROOT, 'webos-icons.local')
+
+
+def tv_apps():
+    """(the apps, {path in the app: icon bytes}) from webos/apps.py, or ([], {}) when it hasn't run here."""
+    if not os.path.exists(APP_LIST):
+        return [], {}
+    with open(APP_LIST, encoding='utf-8') as f:
+        apps = json.load(f)
+    icons = {}
+    for app in apps:
+        if app.get('icon'):
+            path = os.path.join(APP_ICONS, os.path.basename(app['icon']))
+            if os.path.exists(path):
+                with open(path, 'rb') as f:
+                    icons[app['icon']] = f.read()
+            else:
+                app['icon'] = ''
+    return apps, icons
 
 
 def tar_gz(entries):
@@ -57,11 +78,15 @@ def ar(members):
     return out.getvalue()
 
 
-def build(preview, config):
+def build(preview, config, generic=False):
     with open(os.path.join(ROOT, 'webos', 'appinfo.json'), encoding='utf-8') as f:
         info = json.load(f)
     app_id, version = info['id'], info['version']
+    apps, icons = ([], {}) if generic else tv_apps()   # one TV's list never goes in a release
+    if apps:
+        config = dict(config, installedApps=apps)
     app = webapp.files(config, 'webos/build.py')
+    app.update(icons)
     for name in ('appinfo.json', 'icon.png', 'largeIcon.png'):
         with open(os.path.join(ROOT, 'webos', name), 'rb') as f:
             app[name] = f.read()
@@ -92,9 +117,11 @@ def build(preview, config):
         webapp.preview(app, OUT)
         print('Preview: open out/webos/index.html (or serve out/webos) in a browser.')
     print('Built %s (%s %s, %d KB)' % (os.path.basename(IPK), app_id, version, len(data) // 1024))
+    if apps:
+        print('With the TV\'s app list from webos/apps.py (%d apps).' % len(apps))
     if not config['tmdbKey']:
         print('No TMDB key: the picks stay off (everything else works).')
 
 
 if __name__ == '__main__':
-    build('--preview' in sys.argv, webapp.config_from_args(sys.argv[1:]))
+    build('--preview' in sys.argv, webapp.config_from_args(sys.argv[1:]), '--generic' in sys.argv)

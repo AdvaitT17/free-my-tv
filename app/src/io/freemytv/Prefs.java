@@ -29,6 +29,8 @@ final class Prefs {
     static final int KEY_KTC_TABII = KeyEvent.KEYCODE_BUTTON_8;
     /** Xiaomi's Mi button: BUTTON_4, which the TV hands to its GlobalKeyReceiver for PatchWall (its log: "keyCode = 191"). */
     static final int KEY_MI = KeyEvent.KEYCODE_BUTTON_4;
+    /** Xiaomi's PatchWall button: BUTTON_5, which the TV hands to the same receiver to open PatchWall (its log: "192"). */
+    static final int KEY_XIAOMI_PATCHWALL = KeyEvent.KEYCODE_BUTTON_5;
     /** Sony's app buttons, as SONY_KEY + scan code (read from a BRAVIA's log; the key codes are shared). */
     static final int SONY_KEY = 100_000;
     static final int KEY_SONY_CORE = SONY_KEY + 496, KEY_SONY_NETFLIX = SONY_KEY + 583, KEY_SONY_DISNEY = SONY_KEY + 491,
@@ -57,8 +59,8 @@ final class Prefs {
                     KEY_SONY_PLAY}
             : RemoteKeys.STEM_NETFLIX ? new int[] {KEY_STEM_NETFLIX}
             : RemoteKeys.KTC ? new int[] {KEY_KTC_TABII}
-            : RemoteKeys.XIAOMI ? new int[] {KEY_MI, KEY_XIAOMI_OKKO, KEY_XIAOMI_VK, KEY_XIAOMI_RUTUBE, KEY_XIAOMI_KION,
-                    KEY_XIAOMI_WINK, KEY_XIAOMI_IVI}
+            : RemoteKeys.XIAOMI ? new int[] {KEY_MI, KEY_YOUTUBE, KEY_XIAOMI_PATCHWALL, KEY_XIAOMI_OKKO, KEY_XIAOMI_VK,
+                    KEY_XIAOMI_RUTUBE, KEY_XIAOMI_KION, KEY_XIAOMI_WINK, KEY_XIAOMI_IVI}
             : new int[] {KEY_NETFLIX, KEY_YOUTUBE, KEY_PRIME, KEY_TCL_CHANNEL};
 
     /** Bumped by every change: screens compare it to know when to redraw. */
@@ -150,6 +152,10 @@ final class Prefs {
     static boolean sounds() { return sp().getBoolean("sounds", true); }
     static void setSounds(boolean on) { put("sounds", on); }
 
+    /** OK on the screensaver opens the title it shows, in its app; any other key only closes it. Off: any key closes it. */
+    static boolean saverWatch() { return sp().getBoolean("saverWatch", false); }
+    static void setSaverWatch(boolean on) { put("saverWatch", on); }
+
     // MARK: - Widgets and coins
 
     static boolean weather() { return sp().getBoolean("weather", true); }
@@ -157,6 +163,12 @@ final class Prefs {
     /** The weather card's forecast: "hours" (the next 6 hours) or "days" (the next 5 days). */
     static String forecast() { return "days".equals(sp().getString("forecast", "hours")) ? "days" : "hours"; }
     static void setForecast(String v) { put("forecast", v); }
+
+    static boolean nowPlaying() { return sp().getBoolean("nowPlaying", false); }
+    static void setNowPlaying(boolean on) {   // committed: the main process reads it right away to allow the listener
+        sp().edit().putBoolean("nowPlaying", on).commit();
+        version++;
+    }
 
     static boolean quotes() { return sp().getBoolean("quotes", Config.SHOW_CRYPTO); }
     static void setQuotes(boolean on) { put("quotes", on); }

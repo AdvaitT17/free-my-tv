@@ -633,7 +633,7 @@ final class Recs {
     // MARK: - Watchmode (the title's own page in its app; the free plan's web addresses are what the apps open)
 
     private static String linkKey(Pick p) {
-        return "wm:" + p.kind + p.id + p.app;
+        return "wm2:" + p.kind + p.id + p.app;   // wm2: links found before the channel check are looked up again
     }
 
     private boolean needsLink(Pick p) {
@@ -668,7 +668,10 @@ final class Recs {
                     JSONObject s = sources.getJSONObject(i);
                     String name = s.optString("name").toLowerCase(Locale.ROOT).replace(" ", "");
                     String want = service[0].replace(" ", "");
-                    boolean same = want.equals("max") ? name.equals("max") : name.contains(want);
+                    // Not a channel sold inside another app ("AppleTV+ Amazon Channel", "Paramount+ (Via Amazon Prime)"):
+                    // that link opens Amazon or Apple's app, not the one the pick is for.
+                    boolean resold = name.contains("channel") || name.contains("(via");
+                    boolean same = !resold && (want.equals("max") ? name.equals("max") : name.contains(want));
                     if (same && s.optString("type").equals("sub") && s.optString("web_url").startsWith("https://")) link = s.optString("web_url");
                 }
             }
@@ -822,7 +825,7 @@ final class Recs {
             // Watchmode links of titles no longer in the list go (the refused-key mark stays).
             Set<String> keep = new HashSet<>();
             for (Pick p : picks) keep.add(linkKey(p));
-            for (String k : cache.getAll().keySet()) if (k.startsWith("wm:") && !k.equals("wm:refused") && !keep.contains(k)) e.remove(k);
+            for (String k : cache.getAll().keySet()) if ((k.startsWith("wm:") || k.startsWith("wm2:")) && !k.equals("wm:refused") && !keep.contains(k)) e.remove(k);
             e.apply();
         } catch (Exception ignored) {
         }

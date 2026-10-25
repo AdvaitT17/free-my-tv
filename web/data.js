@@ -47,6 +47,8 @@ var Prefs = (function () {
     temperature: function () { return pick('temperature', CONFIG.temperature || 'auto'); },
     theme: function () { return pick('theme', CONFIG.theme || 'auto'); },
     weather: function () { return pick('weather', true); },
+    /** OK on the screensaver opens the title it shows, in its app; any other key only closes it (off by default). */
+    saverWatch: function () { return pick('saverWatch', false) === true; },
     /** The weather card's forecast: 'hours' (the next 6 hours) or 'days' (the next 5 days). */
     forecast: function () { return pick('forecast', 'hours') === 'days' ? 'days' : 'hours'; },
     quotes: function () { return pick('quotes', CONFIG.showCrypto !== false); },
@@ -163,6 +165,11 @@ var Data = (function () {
     CURRENCY = 'USD';
     QUOTE = 'USDT';
   }
+  /** A pair with no trade for a day: Binance halted it and keeps answering with the frozen last price (AUD since 2026-10-06). */
+  function halted(list) {
+    for (var i = 0; list && i < list.length; i++) if (list[i].closeTime > 0 && Date.now() - list[i].closeTime > 864e5) return true;
+    return false;
+  }
   if (stored('dollarsFor') === CURRENCY && CURRENCY !== 'USD') {
     CURRENCY = 'USD';
     QUOTE = 'USDT';
@@ -209,6 +216,8 @@ var Data = (function () {
         // A pair Binance doesn't list (HTTP 400): the prices go in dollars. Binance.US has only dollar pairs: its 400
         // counts only where Binance.com refuses the US (HTTP 451), not after a timeout or a 5xx there.
         if (err && err.message === 'HTTP 400' && QUOTE !== 'USDT' && (h === 0 || refused)) { fetchingPrices = false; inDollars(); refreshPrices(); return; }
+        // Halted: dollars for this run, not saved like the 400's (the market may open again).
+        if (!err && QUOTE !== 'USDT' && halted(body)) { fetchingPrices = false; CURRENCY = 'USD'; QUOTE = 'USDT'; refreshPrices(); return; }
         if (err || !parsePrices(body)) {
           if (h + 1 < hosts.length && !(err && err.message === 'HTTP 400')) next(h + 1, err && err.message === 'HTTP 451');
           else fetchingPrices = false;
@@ -520,6 +529,9 @@ var Data = (function () {
   // MARK: - Formatting
 
   function fmt(v, digits) {
+    // Old WebKit (Tizen 2) has no Intl: toLocaleString ignores its options and prints every digit, without failing.
+    // English separators there; a per-language table if someone asks.
+    if (typeof Intl === 'undefined') return v.toFixed(digits).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     try { return v.toLocaleString(I18N.locale(), {minimumFractionDigits: digits, maximumFractionDigits: digits}); } catch (e) { return v.toFixed(digits); }
   }
 

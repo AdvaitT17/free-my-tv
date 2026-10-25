@@ -7,6 +7,7 @@ import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
+import android.graphics.RectF;
 import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RuntimeShader;
@@ -36,7 +37,8 @@ import java.util.concurrent.Executors;
  *  - top right, like the iPhone lock screen: the date with the weather, the big Liquid Glass clock (the photo shows
  *    through the digits, bent at the edges; Shaders.GLASS_TEXT) and the compact prices;
  *  - bottom left, the photo's caption: the time-of-day label ("TONIGHT"), the title, and genre · runtime · service.
- * Dark scrims only where there is text, stronger where the photo is bright. Any key exits (as on Apple TV).
+ * Dark scrims only where there is text, stronger where the photo is bright. Any key exits (as on Apple TV); with Watch
+ * from the screensaver on (Prefs.saverWatch), OK first opens the title in its app, and the caption says so.
  * With your own photos on (Photos), those instead, without a caption.
  * Without photos (no TMDB key, or before the first fetch): the big clock over the night aurora.
  */
@@ -101,6 +103,13 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private final Scene scene = new Scene(false);
     private final HomeData data;
     private final Recs recs;
+    private final NowPlaying.Watch playing;
+    private final TextPaint fit = new TextPaint();
+    private String playingCorner, playingBottom;
+    private float playingCornerWidth, playingBottomWidth, cornerCap, bottomCap, cornerBase;
+    // The bars before what's playing move on every frame (drawn over the recorded text, which stays still).
+    private final Paint barPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF barRect = new RectF();
     private final Handler handler = new Handler(Looper.getMainLooper());
     private ExecutorService worker = Executors.newSingleThreadExecutor();
     private final Recording content = Recording.create("clock");     // without photos: the clock over the aurora
@@ -127,12 +136,13 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
     private long minute = -1;
     private String clock = "", date = "";
     private Paint datePaint, clockPaint, weatherPaint, weatherDim, quotePaint, stalePaint;
-    private Paint cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, metaPaint;
+    private Paint cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, metaPaint, hintPaint;
     private TextPaint titlePaint;
 
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!running) return;
+            playing.start();   // the listener allowed after the screensaver started (a no-op once watching)
             data.refreshIfStale();
             recs.refreshIfStale();
             recs.prefetchAll();
@@ -147,6 +157,10 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         super(c);
         data = HomeData.get(c);
         recs = Recs.get(c);
+        playing = new NowPlaying.Watch(c, () -> {
+            fitPlaying();
+            onData();
+        });
         Shaders.dream(scene.palette);
         scene.setMotion(0.4f, 0.32f);
         scene.applyPalette();
@@ -178,6 +192,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         Photos.importInbox(getContext(), () -> { if (running) prepareNext(); });
         prepareNext();
         handler.postDelayed(tick, 60_000);
+        playing.start();
         Choreographer.getInstance().postFrameCallback(this);
         invalidate();
     }
@@ -189,6 +204,7 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         decoding = false;
         Choreographer.getInstance().removeFrameCallback(this);
         handler.removeCallbacks(tick);
+        playing.stop();
         data.removeListener(this);
         recs.removeListener(this);
         // The photos stay in GPU memory until the garbage collector runs: release them now (after the last frame).
@@ -248,12 +264,14 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         titlePaint = new TextPaint(Ui.text(Ui.displayMedium, 76 * k, 0xFFFFFFFF));
         titlePaint.setLetterSpacing(0.005f);
         metaPaint = Ui.text(Ui.medium, 29 * k, 0xC7FFFFFF);
+        hintPaint = Ui.text(Ui.regular, 24 * k, 0x99FFFFFF);
         metaPaint.setLetterSpacing(0.014f);
         Symbols.warmWeather(getContext(), 30 * k);   // the corner's
         Symbols.warmWeather(getContext(), 32 * k);   // under the clock
-        for (Paint p : new Paint[] {cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, titlePaint, metaPaint}) {
+        for (Paint p : new Paint[] {cornerDate, cornerQuote, cornerStale, cornerClock, labelPaint, titlePaint, metaPaint, barPaint}) {
             p.setShadowLayer(18 * k, 0, 2 * k, 0x66000000);
         }
+        fitPlaying();
         glassFor = "";
         dirty = true;
         chromeDirty = true;
@@ -458,8 +476,35 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         if (chromeDirty) recordChrome();
         chrome.setAlpha(first);
         chrome.draw(canvas);
+        if (playingCorner != null) {
+            float x = RIGHT * k - playingCornerWidth - cornerCap * 0.6f - NowPlaying.barsWidth(cornerCap);
+            drawBars(canvas, x, cornerBase, cornerCap, cornerQuote.getColor(), first);
+        }
         drawGlass(canvas, first, e);
         drawCaptions(canvas, up);
+    }
+
+    /** What an app is playing, cut to fit the corner and the bottom line: once per title, not while recording. */
+    private void fitPlaying() {
+        String now = playing.text;
+        if (now == null || quotePaint == null) {
+            playingCorner = playingBottom = null;
+            return;
+        }
+        fit.set(cornerQuote);
+        playingCorner = TextUtils.ellipsize(now, fit, 860 * k, TextUtils.TruncateAt.END).toString();
+        playingCornerWidth = cornerQuote.measureText(playingCorner);
+        fit.set(quotePaint);
+        playingBottom = TextUtils.ellipsize(now, fit, w - 2 * MARGIN * k - 60 * k, TextUtils.TruncateAt.END).toString();
+        playingBottomWidth = quotePaint.measureText(playingBottom);
+        cornerCap = Ui.cap(cornerQuote);
+        bottomCap = Ui.cap(quotePaint);
+        cornerBase = (CLOCK_TOP + Ui.cap(cornerClock) / k + QUOTES_GAP) * k;
+    }
+
+    private void drawBars(Canvas c, float x, float base, float cap, int color, float alpha) {
+        barPaint.setColor(Ui.alpha(color, alpha));
+        NowPlaying.drawBars(c, x, base, cap, barPaint, true, barRect);
     }
 
     private static float fadeIn(long elapsed, long duration) {
@@ -547,7 +592,8 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             float base = (CLOCK_TOP + Ui.cap(cornerClock) / k + QUOTES_GAP) * k;
             float cap = Ui.cap(cornerQuote), gap = 7 * k, spacing = 26 * k;
             int[] coins = HomeData.active();
-            int n = HomeData.coinCount();
+            int n = playingCorner != null ? 0 : HomeData.coinCount();   // what an app is playing takes their place
+            if (playingCorner != null) c.drawText(playingCorner, right - playingCornerWidth, base, cornerQuote);
             String[] values = new String[n];
             float[] glyphs = new float[n];
             float total = spacing * (n - 1);
@@ -692,7 +738,9 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         Canvas c = s.caption.beginRecording(w, h);
         try {
             if (s.pick.photo != null) return;   // your photos have no caption
-            float x = MARGIN * k, metaBase = META_BASE * k, titleBase = metaBase - 58 * k;
+            // With the hint, the caption moves up a line: the hint takes the meta's place, 72 px from the bottom edge.
+            boolean hint = Prefs.saverWatch() && s.pick.pkg != null;
+            float x = MARGIN * k, metaBase = (META_BASE - (hint ? 44 : 0)) * k, titleBase = metaBase - 58 * k;
             String title = s.pick.title == null ? "" : s.pick.title;
             StaticLayout t = StaticLayout.Builder.obtain(title, 0, title.length(), titlePaint, Math.round(TITLE_W * k))
                     .setMaxLines(2).setEllipsize(TextUtils.TruncateAt.END).setAlignment(Layout.Alignment.ALIGN_NORMAL)
@@ -705,10 +753,29 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             t.draw(c);
             c.restore();
             if (s.pick.meta != null && !s.pick.meta.isEmpty()) c.drawText(s.pick.meta, x, metaBase, metaPaint);
+            if (hint) {
+                c.drawText(Ui.trf("Press OK to watch on {app} · any other button to close", "app", Recs.serviceName(s.pick)),
+                        x, META_BASE * k, hintPaint);
+            }
         } finally {
             s.caption.endRecording();
         }
         s.caption.setPosition(0, 0, w, h);
+    }
+
+    /** The title whose caption shows, if it has an app on the TV; null for your photos and the clock. */
+    private Recs.Pick watchable() {
+        Slide s = incoming != null && SystemClock.uptimeMillis() - incoming.startedAt > 1300 ? incoming : current;
+        return s == null || s.pick.photo != null || s.pick.pkg == null ? null : s.pick;
+    }
+
+    /** OK with Watch from the screensaver on: the title opens in its app, as its card does on the home screen. */
+    boolean watch() {
+        Recs.Pick p = watchable();
+        if (p == null) return false;
+        boolean opened = HomeApps.open(getContext(), HomeApps.app(p.pkg, Recs.serviceName(p), p.link), null);
+        if (!opened) AppLog.w("screensaver: couldn't open “" + p.title + "” in " + p.pkg);
+        return opened;
     }
 
     /** The caption fades out fast; the new one rises in once the photo has partly changed (like the home screen). */
@@ -754,10 +821,15 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
             dirty = false;
         }
         double phase = 2 * Math.PI * t / DRIFT_PERIOD_S;
-        content.setTranslationX((float) (40 * k * Math.sin(phase)));
-        content.setTranslationY((float) (26 * k * Math.sin(2 * phase + 0.7)));
+        float dx = (float) (40 * k * Math.sin(phase)), dy = (float) (26 * k * Math.sin(2 * phase + 0.7));
+        content.setTranslationX(dx);
+        content.setTranslationY(dy);
         content.setAlpha(alpha);
         content.draw(canvas);
+        if (playingBottom != null) {
+            float bars = NowPlaying.barsWidth(bottomCap) + bottomCap * 0.6f;
+            drawBars(canvas, w / 2f - (bars + playingBottomWidth) / 2 + dx, h - 92 * k + dy, bottomCap, quotePaint.getColor(), alpha);
+        }
     }
 
     private void drawContent(Canvas c) {
@@ -792,8 +864,12 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         // Prices near the bottom edge: small white logo + value, all four on one line.
         float cap = Ui.cap(quotePaint), spacing = 56 * k, gap = 10 * k;
         int[] coins = HomeData.active();
-        String[] values = new String[HomeData.coinCount()];
+        String[] values = new String[playingBottom != null ? 0 : HomeData.coinCount()];
         float total = spacing * (values.length - 1);
+        if (playingBottom != null) {
+            float bars = NowPlaying.barsWidth(bottomCap) + bottomCap * 0.6f;
+            c.drawText(playingBottom, cx - (bars + playingBottomWidth) / 2 + bars, h - 92 * k, quotePaint);
+        }
         for (int i = 0; i < values.length; i++) {
             values[i] = HomeData.price(data.prices[coins[i]]);
             total += Glyphs.width(getContext(), HomeData.COINS[coins[i]], cap) + gap + quotePaint.measureText(values[i]);

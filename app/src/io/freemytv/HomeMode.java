@@ -293,6 +293,53 @@ final class HomeMode {
         AppLog.w("remote buttons service " + (on ? "on" : "off"));
     }
 
+    private static final String NOW_PLAYING = PKG + "/" + PKG + ".NowPlaying";
+
+    /**
+     * Home Settings' Now Playing widget reads what apps play through our notification listener, which could read every
+     * notification (ours never does): it's allowed only while the widget is on, in Free My TV mode, and taken back when
+     * the widget goes off, by Original and by the watchdog's revert. Asked when the widget changes and by a screen that
+     * finds it on but not allowed; this process sets it to what the widget says at that moment, so the order the
+     * requests run in doesn't matter.
+     */
+    static void nowPlayingAccess(Context c) {
+        ModeJob.schedule(c, ModeJob.PLAYING, null, 0);
+    }
+
+    static void nowPlayingAccessNow(Context app) {
+        synchronized (RUN) {   // after a switch or a revert, never in the middle of one
+            JSONObject s = state(app);
+            if (!FREE.equals(s.optString("mode")) || s.optBoolean("homeReverted")) return;   // they took it back
+            try (Adb adb = Adb.connect(app, 10_000, null)) {
+                nowPlaying(app, adb, nowPlayingOn());
+            } catch (IOException e) {
+                AppLog.w("now playing: " + e.getMessage());   // ADB didn't answer: asked again next time, not refused
+            }
+        }
+    }
+
+    /** The widget as Home Settings (:home) saved it. */
+    private static boolean nowPlayingOn() {
+        Prefs.reload();
+        return Prefs.nowPlaying();
+    }
+
+    /** Allows our listener and proves it took (refused, the widget's row shows Unavailable), or takes it back. */
+    private static void nowPlaying(Context c, Adb adb, boolean on) throws IOException {
+        String out = adb.shell("cmd notification " + (on ? "allow_listener " : "disallow_listener ") + NOW_PLAYING).trim();
+        AppLog.w("now playing " + (on ? "on" : "off") + (out.isEmpty() ? "" : ": " + out));
+        if (!on) {
+            Capabilities.forget(c, Capabilities.LISTENER);   // tried again when it's next turned on
+            return;
+        }
+        boolean works = NowPlaying.allowed(c);
+        for (int i = 0; i < 5 && !works; i++) {   // the system can take a moment to see it
+            SystemClock.sleep(200);
+            works = NowPlaying.allowed(c);
+        }
+        Capabilities.prove(c, Capabilities.LISTENER, works);
+    }
+
     // MARK: - Switches (main process, from ModeJob)
 
     static void applyNow(Context c, String mode) {
@@ -357,7 +404,7 @@ final class HomeMode {
             Watchdog.clear(c);
             check(adb.shell("cmd package set-home-activity " + HOME_ACTIVITY), "Success",
                     Ui.tr("Android didn't accept the new home screen"));
-            adb.shell("settings put secure screensaver_components " + DREAM);
+            if (Config.SCREENSAVER) adb.shell("settings put secure screensaver_components " + DREAM);
             boolean jmOurs = !jm || setJmHome(adb, PKG);
             if (!jmOurs) AppLog.w("JmLauncher keeps the Home button: " + JM_HOME + " didn't take");
             JSONObject started = state(c);
@@ -478,6 +525,11 @@ final class HomeMode {
             SleepTimer.stop(c);
             adb.shell("appops set " + PKG + " SYSTEM_ALERT_WINDOW default");   // SleepOverlay's, if it was allowed
             Capabilities.forget(c, Capabilities.OVERLAY);                       // asked again next time
+            try {
+                nowPlaying(c, adb, false);
+            } catch (IOException e) {
+                AppLog.w("now playing: " + e.getMessage());
+            }
             s = state(c);
             s.put("mode", ORIGINAL).put("since", System.currentTimeMillis()).put("homeReverted", false)
                     .put("disabled", new JSONArray(failed)).remove("keptOff");
@@ -580,6 +632,11 @@ final class HomeMode {
                 // The screensaver first: if that fails, the revert isn't marked done and the next try does it again.
                 restoreScreensaver(adb, s);
                 SleepTimer.stop(app);   // its row shows Unavailable from now on
+                try {
+                    nowPlaying(app, adb, false);   // and so does Now Playing's
+                } catch (IOException e) {
+                    AppLog.w("now playing: " + e.getMessage());
+                }
                 s.put("homeReverted", true).put("disabled", kept);
                 save(app, s);
                 notice(app, Ui.tr("Free My TV's home screen crashed 3 times in a row; I switched back to the original one."));
@@ -608,6 +665,11 @@ final class HomeMode {
             if (!FREE.equals(s.optString("mode")) || AMAZON) return;
             List<String> fixed = new ArrayList<>();
             try (Adb adb = Adb.connect(app, 10_000, null)) {
+                try {   // as the widget says: a TV update can take it back, and a take-back can have failed
+                    nowPlaying(app, adb, !s.optBoolean("homeReverted") && nowPlayingOn());
+                } catch (IOException e) {
+                    AppLog.w("now playing: " + e.getMessage());
+                }
                 Set<String> present = packages(adb, "");
                 Set<String> disabledNow = packages(adb, "-d");
                 Set<String> owners = wifiOwners(adb);
@@ -633,6 +695,13 @@ final class HomeMode {
                 }
                 for (String pkg : sorted(wanted)) if (!order.contains(pkg)) order.add(pkg);
                 Set<String> disabled = new HashSet<>(stringList(s, "disabled"));
+                // screensaver=false after a switch with ours: the TV's own screensaver app comes back on.
+                String dreamPkg = packageOf(dream);
+                if (!Config.SCREENSAVER && dreamPkg != null && disabled.remove(dreamPkg)) {
+                    wanted.remove(dreamPkg);
+                    order.remove(dreamPkg);
+                    if (disabledNow.remove(dreamPkg)) adb.shell("pm enable " + dreamPkg);
+                }
                 // Off before Free My TV: turned off again if a TV update brings one back, but never handed to
                 // Original to turn on.
                 List<String> keptOff = stringList(s, "keptOff");
@@ -685,15 +754,26 @@ final class HomeMode {
                         fixed.add(pkg);
                     }
                 }
+                // The switch's own rule, at every check: the TV's home screen stays on while Google TV's setup app is
+                // on. With the home off, the setup app's recovery screen takes Home, and a TV that turns the setup app
+                // back on at every start may not start at all (#269). Versions before 1.2 could leave it that way.
+                if (setupOn && homePkg != null && !homePkg.equals(PKG) && disabledNow.contains(homePkg)
+                        && adb.shell("pm enable " + homePkg).contains("new state: enabled")) {
+                    disabled.remove(homePkg);
+                    disabledNow.remove(homePkg);
+                    AppLog.w("turned the TV's home screen back on: Google TV's setup app is on");
+                }
                 if (!reverted && !homeHolder(adb).contains(PKG)) {
                     adb.shell("cmd package set-home-activity " + HOME_ACTIVITY);
                     fixed.add(Ui.tr("the home screen"));
                 }
                 // Whole component names: ".ScreensaverAlone" (Android 11 to 12L) contains ".Screensaver" (the others).
                 List<String> savers = Arrays.asList(adb.shell("settings get secure screensaver_components").trim().split(","));
-                if (!reverted && !savers.contains(DREAM)) {
+                if (Config.SCREENSAVER && !reverted && !savers.contains(DREAM)) {
                     adb.shell("settings put secure screensaver_components " + DREAM);
                     if (!savers.contains(OTHER_DREAM)) fixed.add(Ui.tr("the screensaver"));   // ours, moved: not the TV
+                } else if (!Config.SCREENSAVER && !reverted && (savers.contains(DREAM) || savers.contains(OTHER_DREAM))) {
+                    restoreScreensaver(adb, s);   // screensaver=false since the switch: the TV's own again
                 }
                 record(adb, disabled);
                 JSONObject latest = state(app);
@@ -725,7 +805,8 @@ final class HomeMode {
         if (homePkg != null && !homePkg.equals(PKG)) out.add(homePkg);
         if (TV_LAUNCHER.equals(homePkg)) out.add(TV_RECOMMENDATIONS);
         String dreamPkg = packageOf(dream);
-        if (dreamPkg != null && !dreamPkg.equals(PKG) && !dreamPkg.equals(homePkg)) out.add(dreamPkg);
+        // screensaver=false keeps the TV's own screensaver: then it stays on.
+        if (Config.SCREENSAVER && dreamPkg != null && !dreamPkg.equals(PKG) && !dreamPkg.equals(homePkg)) out.add(dreamPkg);
         out.addAll(Arrays.asList(DEBLOAT));
         if (Config.DISABLE_ASSISTANT) out.addAll(Arrays.asList(ASSISTANT));
         return out;
@@ -825,6 +906,8 @@ final class HomeMode {
     }
 
     private static void restoreScreensaver(Adb adb, JSONObject s) throws IOException {
+        // screensaver=false: the TV kept its own, so only ours (set before that) gives way, not one picked meanwhile.
+        if (!Config.SCREENSAVER && !adb.shell("settings get secure screensaver_components").contains(PKG + "/")) return;
         String saver = safeComponents(s.optString("originalScreensaver", ""));
         if (saver.isEmpty()) adb.shell("settings delete secure screensaver_components");
         else adb.shell("settings put secure screensaver_components '" + saver + "'");

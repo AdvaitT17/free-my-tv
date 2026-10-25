@@ -202,6 +202,12 @@ final class HomeData {
                         AppLog.w("prices: Binance has no " + CURRENCY + " pairs, using dollars");
                         body = getPrices();
                     }
+                    if (!inDollars && !CURRENCY.equals("USD") && halted(body, System.currentTimeMillis())) {
+                        // Not saved, unlike a currency Binance doesn't list: the market may open again (next start).
+                        inDollars = true;
+                        AppLog.w("prices: Binance has halted its " + CURRENCY + " pairs, using dollars");
+                        body = getPrices();
+                    }
                     parsePrices(body);
                     pricesAt = System.currentTimeMillis();
                     cache.edit().putString("prices", body).putLong("pricesAt", pricesAt).apply();
@@ -243,6 +249,19 @@ final class HomeData {
 
     private void notifyListeners() {
         main.post(() -> { for (Listener l : new ArrayList<>(listeners)) l.onData(); });
+    }
+
+    /**
+     * A pair with no trade for a day: Binance halted it and keeps answering with the frozen last price (its AUD pairs
+     * since 2026-10-06, BTC at AUD 37,000 for AUD 115,000).
+     */
+    static boolean halted(String body, long now) throws Exception {
+        JSONArray list = new JSONArray(body);
+        for (int i = 0; i < list.length(); i++) {
+            long close = list.getJSONObject(i).optLong("closeTime", 0);
+            if (close > 0 && now - close > 24 * 60 * 60_000L) return true;
+        }
+        return false;
     }
 
     private void parsePrices(String body) throws Exception {

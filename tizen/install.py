@@ -11,7 +11,8 @@ restart the TV.
 It speaks SDB (Samsung's ADB, port 26101) itself, so it needs only Python 3: no Tizen Studio, and no Rosetta on Apple
 Silicon, where Samsung's sdb (an Intel binary) doesn't run. Like Samsung's tools it pushes the package to the folder
 the TV names in its capabilities and installs it with `0 vd_appinstall`, the command TizenBrew Installer uses on
-every Tizen; `0 was_execute` opens it. Tested on a 2017 UN50MU6100 (Tizen 3.0) and a 2019 UN55RU7100 (Tizen 5.0).
+every Tizen; `0 was_execute` opens it. Tested on a 2017 UN50MU6100 (Tizen 3.0), a 2019 UN55RU7100 (Tizen 5.0) and a
+2024 QA75Q60D (Tizen 9.0).
 """
 import os
 import re
@@ -163,8 +164,12 @@ def main():
     try:
         sdb = Sdb(ip)
     except (OSError, ConnectionError) as e:
+        # A 2024 QA75Q60D (Tizen 9) closed the connection like this for a while, across restarts, with the right Host
+        # PC IP, then took the same install without a change: what it waited for is unknown.
+        dropped = isinstance(e, ConnectionResetError) or 'closed the connection' in str(e)
         sys.exit('Couldn\'t reach the TV on port %d (%s). On the TV: Apps, 1 2 3 4 5, Developer mode on with Host PC '
-                 'IP %s, then restart the TV.' % (PORT, e, this_computer(ip)))
+                 'IP %s, then restart the TV.%s' % (PORT, e, this_computer(ip),
+                 ' If it already is, wait a minute after the TV restarts and try again.' if dropped else ''))
     caps = sdb.capabilities()
     print('Connected: %s, Tizen %s.' % (sdb.banner.split(':')[2] if sdb.banner.count(':') >= 2 else sdb.banner,
                                          caps.get('platform_version', '?')))
@@ -177,7 +182,9 @@ def main():
         print('Removed.')
         return
 
-    remote = caps.get('sdk_toolpath', '/home/owner/share/tmp/sdk_tools').rstrip('/') + '/FreeMyTV-tizen.wgt'
+    # Tizen 2.4's sdbd names no sdk_toolpath and has no /home/owner: its tools' folder is /opt/usr/apps/tmp.
+    default_path = '/opt/usr/apps/tmp' if caps.get('platform_version', '').startswith('2.') else '/home/owner/share/tmp/sdk_tools'
+    remote = caps.get('sdk_toolpath', default_path).rstrip('/') + '/FreeMyTV-tizen.wgt'
     with open(WGT, 'rb') as f:
         data = f.read()
     print('Copying the app to the TV ...')

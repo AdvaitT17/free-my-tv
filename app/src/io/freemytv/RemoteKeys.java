@@ -19,6 +19,9 @@ import android.view.KeyEvent;
  * the filter sees them first, the same way.
  * On Xiaomi TVs whose remote has no Home button, its Mi button is BUTTON_4, a global key that Xiaomi's GlobalKeyReceiver
  * (partnercustomizer) turns into PatchWall. The filter sees it first, and by default it opens the home screen.
+ * On Xiaomi TVs the YouTube button is ours too: BUTTON_3, a global key for the stock home screen (launcherx), which
+ * Free My TV turns off. So is the PatchWall button (BUTTON_5, which that receiver would open PatchWall with); Netflix
+ * goes to the receiver, which stays on. Their remote sends one press as a burst of presses: the app opens once.
  * On Xiaomi TVs sold in Russia, the Okko, VK, Rutube, KION, Wink and IVI buttons are global keys too, for Xiaomi's
  * hot-key receiver (partnercustomizer's GlobalKeyReceiver).
  * On Hisense TVs, the Prime Video, YouTube, Disney+, All Apps, Settings (gear) and profile buttons go to Google TV's
@@ -43,6 +46,11 @@ final class RemoteKeys {
     static final boolean XIAOMI = is("Xiaomi") && !FORMOVIE && Build.MODEL.startsWith("MiTV-M");
     /** Brands whose Netflix button is STEM_1, a global key (MediaTek): only that button is ours. */
     static final boolean STEM_NETFLIX = VESTEL || FORMOVIE;
+
+    /** Xiaomi's remote sends one press as a burst of separate presses: a press this soon after the last one is the same. */
+    private static final long BURST_MS = 1000;
+    private static int lastKey;
+    private static long lastDown;
 
     static boolean supported() {
         return TCL || STEM_NETFLIX || KTC || SONY || XIAOMI || HISENSE;
@@ -72,6 +80,11 @@ final class RemoteKeys {
         String pkg = Prefs.keyApp(keyCode);
         if (pkg.isEmpty()) return false;   // "Nothing": the key goes on as if we weren't here
         if (e.getAction() == KeyEvent.ACTION_DOWN && e.getRepeatCount() == 0) {
+            // Only on Xiaomi, where the bursts are: everywhere else a second press opens the app again, as before.
+            boolean burst = XIAOMI && keyCode == lastKey && e.getEventTime() - lastDown < BURST_MS;
+            lastKey = keyCode;
+            lastDown = e.getEventTime();
+            if (burst) return true;
             // Our own package means the home screen in use (Xiaomi's Mi button): ours, or the TV's own after the
             // watchdog handed it back. Not the settings app our launcher icon opens.
             Intent intent = pkg.equals(HomeMode.PKG) || pkg.equals(Prefs.ALL_APPS)
