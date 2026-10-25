@@ -95,6 +95,7 @@
  "Not installed": "ไม่ได้ติดตั้ง",
  "Nothing": "ไม่ทำอะไร",
  "Now Playing widget": "วิดเจ็ตกำลังเล่น",
+ "Now playing: {what}": "กำลังเล่น: {what}",
  "OK adds or removes (up to {n}). ← → change the order.": "OK เพิ่มหรือเอาออก (ได้ถึง {n}) ← → เปลี่ยนลำดับ",
  "OK adds or removes a button. ← → change the order.": "OK เพิ่มหรือเอาปุ่มออก ← → เปลี่ยนลำดับ",
  "OK adds or removes an app. ← → change the order.": "OK เพิ่มหรือเอาแอปออก ← → เปลี่ยนลำดับ",
