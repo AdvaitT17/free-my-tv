@@ -705,7 +705,6 @@ public class SettingsActivity extends Activity {
                                 countServicesOff();
                                 focus = 1;
                                 screen = PICKS;
-                                screen = HOME_SETTINGS;
                             } else {
                                 focus = screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? (editingTop ? 4 : 3)
                                         : screen == REMOTE_KEYS ? 5 : screen == POWER ? 6 : 0;
