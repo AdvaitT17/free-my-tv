@@ -2,13 +2,18 @@ package io.freemytv;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.JsonReader;
+import android.util.JsonToken;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -31,13 +36,15 @@ import java.util.Set;
  *
  * Signing in is Trakt's device code with PKCE: the TV shows a short code, they type it at trakt.tv/activate on their
  * phone. Trakt no longer gives new apps a client secret; one from an older app ("trakt_client_secret") is still sent.
- * The tokens stay in this process's SharedPreferences (:home, where Settings and the home screen both run).
+ * The tokens stay in this process's SharedPreferences (:home, where Settings and the home screen both run), and
+ * only :home uses them: on Android 11 to 12L the screensaver runs in the main process (ScreensaverAlone), where a
+ * renewal from its own copy would leave :home's refresh token spent, and so signed out.
  */
 final class Trakt {
     private Trakt() {}
 
     private static final String API = "https://api.trakt.tv";
-    /** Watchlist titles taken into the picks, per kind (each costs TMDB requests for its details). */
+    /** Watchlist titles read, per kind: candidates (Recs looks them up on TMDB only until it has enough). */
     static final int WATCHLIST_MAX = 12;
     /** Trakt's recommendations taken, per kind. */
     static final int RECOMMENDED_MAX = 10;
@@ -74,9 +81,26 @@ final class Trakt {
     /** Its own lock: a token renewal (network, on the picks' thread) never holds up OK on the Trakt row. */
     private static final Object SIGN_IN = new Object();
 
-    /** The person put their own Trakt API app in config.properties. */
+    /** The person put their own Trakt API app in config.properties (and this is :home: see above). */
     static boolean available() {
-        return !Config.TRAKT_CLIENT_ID.trim().isEmpty();
+        return !Config.TRAKT_CLIENT_ID.trim().isEmpty() && inHome();
+    }
+
+    private static volatile Boolean home;
+
+    private static boolean inHome() {
+        if (home == null) {
+            String name = "";
+            try (FileInputStream in = new FileInputStream("/proc/self/cmdline")) {
+                byte[] b = new byte[128];
+                int n = Math.max(0, in.read(b)), end = 0;
+                while (end < n && b[end] != 0) end++;
+                name = new String(b, 0, end, StandardCharsets.US_ASCII);
+            } catch (IOException ignored) {
+            }
+            home = name.endsWith(":home");
+        }
+        return home;
     }
 
     private static SharedPreferences sp(Context c) {
@@ -222,7 +246,7 @@ final class Trakt {
         }
         Map<String, String> watchedAt = new HashMap<>();
         watched(c, "/sync/watched/movies", "movie", out.watched, watchedAt);
-        JSONArray shows = watched(c, "/sync/watched/shows?extended=noseasons", "show", out.watched, watchedAt);
+        List<Seen> shows = watched(c, "/sync/watched/shows?extended=noseasons", "show", out.watched, watchedAt);
         // Each part on its own: one Trakt endpoint failing leaves the others.
         try {
             playback(c, out, watchedAt);
@@ -245,21 +269,75 @@ final class Trakt {
         return out;
     }
 
+    /** A show from /sync/watched/shows: what upNext needs. */
+    private static final class Seen {
+        String key, at;
+        int trakt;
+    }
+
     /**
      * Also when each was last watched or marked watched (`at`): marking a show watched "on its release date" leaves
-     * last_watched_at in the past, but last_updated_at is when it was marked.
+     * last_watched_at in the past, but last_updated_at is when it was marked. Read as it arrives (a long history is
+     * megabytes of JSON): only the ids and the two dates are kept.
      */
-    private static JSONArray watched(Context c, String path, String type, Set<String> out, Map<String, String> at) throws Exception {
-        JSONArray a = new JSONArray(get(c, path));
-        for (int i = 0; i < a.length(); i++) {
-            JSONObject item = a.optJSONObject(i);
-            String key = key(item, type);
-            if (key == null) continue;
-            out.add(key);
-            String watchedAt = item.optString("last_watched_at"), updatedAt = item.optString("last_updated_at");
-            at.put(key, watchedAt.compareTo(updatedAt) > 0 ? watchedAt : updatedAt);
-        }
-        return a;
+    private static List<Seen> watched(Context c, String path, String type, Set<String> out, Map<String, String> at) throws Exception {
+        List<Seen> seen = new ArrayList<>();
+        stream(c, path, r -> {
+            r.beginArray();
+            while (r.hasNext()) {
+                String watchedAt = "", updatedAt = "";
+                int tmdb = 0, trakt = 0;
+                r.beginObject();
+                while (r.hasNext()) {
+                    String name = r.nextName();
+                    if (name.equals("last_watched_at")) watchedAt = string(r);
+                    else if (name.equals("last_updated_at")) updatedAt = string(r);
+                    else if (name.equals(type) && r.peek() == JsonToken.BEGIN_OBJECT) {
+                        r.beginObject();
+                        while (r.hasNext()) {
+                            if (r.nextName().equals("ids") && r.peek() == JsonToken.BEGIN_OBJECT) {
+                                r.beginObject();
+                                while (r.hasNext()) {
+                                    String id = r.nextName();
+                                    if (id.equals("tmdb")) tmdb = number(r);
+                                    else if (id.equals("trakt")) trakt = number(r);
+                                    else r.skipValue();
+                                }
+                                r.endObject();
+                            } else {
+                                r.skipValue();
+                            }
+                        }
+                        r.endObject();
+                    } else {
+                        r.skipValue();
+                    }
+                }
+                r.endObject();
+                if (tmdb <= 0) continue;
+                Seen item = new Seen();
+                item.key = (type.equals("show") ? "tv" : "movie") + ":" + tmdb;
+                item.at = watchedAt;
+                item.trakt = trakt;
+                out.add(item.key);
+                at.put(item.key, watchedAt.compareTo(updatedAt) > 0 ? watchedAt : updatedAt);
+                if (type.equals("show")) seen.add(item);
+            }
+            r.endArray();
+        });
+        return seen;
+    }
+
+    private static String string(JsonReader r) throws IOException {
+        if (r.peek() == JsonToken.STRING) return r.nextString();
+        r.skipValue();
+        return "";
+    }
+
+    private static int number(JsonReader r) throws IOException {
+        if (r.peek() == JsonToken.NUMBER) return r.nextInt();
+        r.skipValue();
+        return 0;
     }
 
     /** When the account last changed on Trakt (ISO 8601, one small request): the picks are fetched again if it moves. */
@@ -288,22 +366,18 @@ final class Trakt {
     }
 
     /** The next episode of the shows watched most recently, when one is out. */
-    private static void upNext(Context c, JSONArray shows, Lists out) throws Exception {
-        List<JSONObject> items = new ArrayList<>();
-        for (int i = 0; i < shows.length(); i++) if (shows.optJSONObject(i) != null) items.add(shows.optJSONObject(i));
-        Collections.sort(items, (x, y) -> y.optString("last_watched_at").compareTo(x.optString("last_watched_at")));
+    private static void upNext(Context c, List<Seen> shows, Lists out) throws Exception {
+        List<Seen> items = new ArrayList<>(shows);
+        Collections.sort(items, (x, y) -> y.at.compareTo(x.at));
         int asked = 0;
-        for (JSONObject item : items) {
+        for (Seen item : items) {
             if (asked >= UP_NEXT_SHOWS) break;
-            String key = key(item, "show");
-            JSONObject ids = item.optJSONObject("show") == null ? null : item.optJSONObject("show").optJSONObject("ids");
-            int trakt = ids == null ? 0 : ids.optInt("trakt");
-            if (key == null || trakt <= 0 || has(out.progress, key)) continue;
+            if (item.trakt <= 0 || has(out.progress, item.key)) continue;
             asked++;
-            JSONObject progress = new JSONObject(get(c, "/shows/" + trakt + "/progress/watched?specials=false&count_specials=false"));
+            JSONObject progress = new JSONObject(get(c, "/shows/" + item.trakt + "/progress/watched?specials=false&count_specials=false"));
             JSONObject next = progress.optJSONObject("next_episode");
             if (next == null || progress.optInt("completed") >= progress.optInt("aired")) continue;
-            out.progress.add(new Progress(key, next.optInt("season"), next.optInt("number"), false));
+            out.progress.add(new Progress(item.key, next.optInt("season"), next.optInt("number"), false));
         }
     }
 
@@ -370,6 +444,25 @@ final class Trakt {
         return request("GET", path, null, token(c), 200);
     }
 
+    private interface Parser {
+        void read(JsonReader r) throws IOException;
+    }
+
+    /** A GET read as it arrives, without the whole body in memory. */
+    private static void stream(Context c, String path, Parser parser) throws Exception {
+        HttpURLConnection h = open("GET", path, token(c));
+        try {
+            int code = h.getResponseCode();
+            if (code == 401) throw new IOException("Trakt refused the key or the sign-in");
+            if (code != 200) throw new IOException("Trakt returned HTTP " + code);
+            try (JsonReader r = new JsonReader(new InputStreamReader(new BufferedInputStream(h.getInputStream()), StandardCharsets.UTF_8))) {
+                parser.read(r);
+            }
+        } finally {
+            h.disconnect();
+        }
+    }
+
     private static String request(String method, String path, JSONObject body, String token, int want) throws IOException {
         Response r = send(method, path, body, token);
         if (r.code == 401) throw new IOException("Trakt refused the key or the sign-in");
@@ -377,7 +470,7 @@ final class Trakt {
         return r.body;
     }
 
-    private static Response send(String method, String path, JSONObject body, String token) throws IOException {
+    private static HttpURLConnection open(String method, String path, String token) throws IOException {
         HttpURLConnection c = (HttpURLConnection) new URL(API + path).openConnection();
         c.setConnectTimeout(8000);
         c.setReadTimeout(15000);
@@ -387,6 +480,11 @@ final class Trakt {
         c.setRequestProperty("trakt-api-version", "2");
         c.setRequestProperty("trakt-api-key", clientId());
         if (token != null) c.setRequestProperty("Authorization", "Bearer " + token);
+        return c;
+    }
+
+    private static Response send(String method, String path, JSONObject body, String token) throws IOException {
+        HttpURLConnection c = open(method, path, token);
         try {
             if (body != null) {
                 c.setDoOutput(true);
