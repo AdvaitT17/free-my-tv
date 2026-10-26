@@ -3477,17 +3477,40 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (!watchMetas[i].isEmpty()) c.drawText(watchMetas[i], textLeft, textTop + 80 * k, lCardMeta);
     }
 
-    /** Resumes it where you left it (the app's own link); if that link doesn't open, the app itself. */
+    /** Resumes it where you left it (the app's own link); if that link can't be used, the app itself. */
     private void openWatching(WatchNext.Item it) {
-        try {
-            if (it.intent != null) {
-                activity.startActivity(Intent.parseUri(it.intent, Intent.URI_INTENT_SCHEME).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        Intent link = it.intent == null ? null : linkIntent(it.intent, it.pkg);
+        if (link != null && link.resolveActivity(activity.getPackageManager()) != null) {
+            try {
+                activity.startActivity(link.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
                 return;
+            } catch (ActivityNotFoundException | SecurityException e) {
+                AppLog.w("continue watching link: " + e.getMessage());
             }
-        } catch (java.net.URISyntaxException | RuntimeException e) {
-            AppLog.w("continue watching link: " + e.getMessage());
         }
         if (!openApp(it)) showToast(Ui.trf("Couldn't open {app}.", "app", it.title));
+    }
+
+    /**
+     * Another app wrote this link (#94's linkIntent, by @GizmoH2o): it only ever opens that app, never ours or a third
+     * one, with no selector and no permissions handed along. Null if it can't be used.
+     */
+    private static Intent linkIntent(String uri, String pkg) {
+        if (HomeMode.PKG.equals(pkg)) return null;
+        Intent intent;
+        try {
+            intent = uri.startsWith("intent:") ? Intent.parseUri(uri, Intent.URI_INTENT_SCHEME)
+                    : new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(uri));
+        } catch (java.net.URISyntaxException | RuntimeException e) {   // a bad launchFlags= throws NumberFormatException
+            AppLog.w("continue watching link: " + e.getMessage());
+            return null;
+        }
+        if (intent.getComponent() != null && !intent.getComponent().getPackageName().equals(pkg)) return null;
+        intent.setSelector(null);
+        intent.setPackage(pkg);
+        intent.setFlags(intent.getFlags() & ~(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION));
+        return intent;
     }
 
     /** The item's app, from its start (guarded like HomeApps.open: a missing or refusing app shows a toast). */
