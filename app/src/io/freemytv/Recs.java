@@ -41,7 +41,8 @@ import java.util.concurrent.Executors;
  * Globoplay...), via TMDB (an open movie database that knows what streams where in each country). Three per hour.
  * "Watch" opens the service's app.
  *
- * Each person uses their own free TMDB key (config.properties "tmdb_key", built into the app). It never goes to the log.
+ * Each person uses their own free TMDB key: given on the TV (Home Settings > TMDB key, which the APK on GitHub's
+ * releases needs), else config.properties' "tmdb_key", built into the app. It never goes to the log.
  */
 final class Recs {
     static final class Pick {
@@ -199,7 +200,46 @@ final class Recs {
     void removeListener(Listener l) { listeners.remove(l); }
 
     static boolean hasKey(Context c) {
-        return !Config.TMDB_KEY.trim().isEmpty();
+        return !key().isEmpty();
+    }
+
+    private static volatile String cachedKey = "";
+    private static volatile int keyVersion = -1;
+
+    /**
+     * The key given on the TV, else the one built in from config.properties ("" for neither). The home screen asks
+     * while drawing: read again only when a setting changed (Prefs.version).
+     */
+    static String key() {
+        int version = Prefs.version;
+        if (version != keyVersion) {
+            String given = Prefs.tmdbKey();
+            cachedKey = given.isEmpty() ? Config.TMDB_KEY.trim() : given;
+            keyVersion = version;
+        }
+        return cachedKey;
+    }
+
+    /**
+     * A key as pasted (spaces, line breaks taken out), or "" when it can't be one: an API key (32 hex digits) or an API
+     * Read Access Token (a JWT, "eyJ…").
+     */
+    static String cleanKey(String pasted) {
+        String key = pasted == null ? "" : pasted.replaceAll("\\s+", "");
+        return key.matches("[A-Za-z0-9._-]{16,1024}") ? key : "";
+    }
+
+    /** Asks TMDB whether a key works, before it's saved: null if it does, else why not, for the screen. Never logged. */
+    static String checkKey(String key) {
+        try {
+            request("/configuration", key);
+            return null;
+        } catch (IOException e) {
+            if (REJECTED.equals(e.getMessage())) return Ui.tr("TMDB refused this key.");
+            return Ui.trf("Couldn't reach TMDB: {error}", "error", e.getMessage() == null ? e.toString() : e.getMessage());
+        } catch (org.json.JSONException e) {
+            return Ui.trf("Couldn't reach TMDB: {error}", "error", e.getMessage());
+        }
     }
 
     /** Last fetch, for the settings screen: {count, error, at}. Written by the home screen (another process). */
@@ -663,7 +703,7 @@ final class Recs {
     }
 
     private long sourceStamp() {
-        long stamp = (Config.TMDB_KEY.hashCode() * 31L + REGION.hashCode()) * 31L + (Config.HIDE_ANIMATION ? 1 : 0);
+        long stamp = (key().hashCode() * 31L + REGION.hashCode()) * 31L + (Config.HIDE_ANIMATION ? 1 : 0);
         for (String[] service : SERVICES) stamp = stamp * 31L + (installed(service[2]) ? service[2].hashCode() : 0);
         return stamp;
     }
@@ -739,8 +779,14 @@ final class Recs {
     }
 
     private JSONObject get(String path) throws IOException, org.json.JSONException {
-        String key = readKey();
-        if (key == null) throw new IOException("no TMDB key");
+        String key = key();
+        if (key.isEmpty()) throw new IOException("no TMDB key");
+        return request(path, key);
+    }
+
+    private static final String REJECTED = "TMDB rejected the key";
+
+    private static JSONObject request(String path, String key) throws IOException, org.json.JSONException {
         boolean bearer = key.startsWith("eyJ");   // read access token (v4) or API key (v3)
         String url = API + path + (bearer ? "" : (path.contains("?") ? "&" : "?") + "api_key=" + URLEncoder.encode(key, "UTF-8"));
         HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
@@ -750,17 +796,12 @@ final class Recs {
         if (bearer) c.setRequestProperty("Authorization", "Bearer " + key);
         try {
             int code = c.getResponseCode();
-            if (code == 401) throw new IOException("TMDB rejected the key");
+            if (code == 401) throw new IOException(REJECTED);
             if (code != 200) throw new IOException("TMDB returned HTTP " + code);
             return new JSONObject(read(c.getInputStream()));
         } finally {
             c.disconnect();
         }
-    }
-
-    private String readKey() {
-        String key = Config.TMDB_KEY.trim();
-        return key.isEmpty() ? null : key;
     }
 
     // MARK: - Images (TMDB originals on disk, up to 24 so the whole list fits; this hour's kept ready in memory)
