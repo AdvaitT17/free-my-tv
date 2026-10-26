@@ -565,5 +565,5 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 /* The Magic Remote's pointer: no text selection, no outlines. */
 * { -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
 
-/* Tizen 2 (see tv.js): no shadows or animations, which its GPU can't keep up with while the focus moves. */
+/* Tizen 2 and 1 GB TVs (see tv.js): no shadows or animations; their GPUs can't keep up while the focus moves. */
 .lite * { box-shadow: none !important; -webkit-transition: none !important; transition: none !important; }
