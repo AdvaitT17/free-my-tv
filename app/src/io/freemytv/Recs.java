@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -154,6 +156,21 @@ final class Recs {
             listLanguage = cache.getString("language", cache.getBoolean("english", false) ? "en" : "pt");
             keyStamp = cache.getLong("keyStamp", 0);
         } catch (Exception ignored) {
+        }
+        // Right after the TV starts, the first fetch runs before the Wi-Fi is up and fails, which would hold the old
+        // picks for the 10 minutes after a failure: as soon as the network comes, try again.
+        try {
+            ConnectivityManager cm = c.getSystemService(ConnectivityManager.class);
+            if (cm != null) cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+                @Override public void onAvailable(Network network) {
+                    if (failedAt == 0) return;
+                    failedAt = 0;
+                    AppLog.w("recommendations: network up, fetching again");
+                    main.postDelayed(Recs.this::refreshIfStale, 2000);   // the routes and DNS settle just after
+                }
+            });
+        } catch (RuntimeException e) {
+            AppLog.w("recommendations: no network callback: " + e.getMessage());
         }
     }
 
