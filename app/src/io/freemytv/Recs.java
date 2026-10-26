@@ -181,9 +181,12 @@ final class Recs {
             if (cm != null) cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
                 @Override public void onAvailable(Network network) {
                     if (failedAt == 0) return;
-                    failedAt = 0;
-                    AppLog.w("recommendations: network up, fetching again");
-                    main.postDelayed(Recs.this::refreshIfStale, 2000);   // the routes and DNS settle just after
+                    failedAt = 0;   // the next screen to show fetches at once
+                    main.postDelayed(() -> {
+                        if (listeners.isEmpty()) return;   // nothing showing: no downloads under another app
+                        AppLog.w("recommendations: network up, fetching again");
+                        refreshIfStale();
+                    }, 2000);   // the routes and DNS settle just after
                 }
             });
         } catch (RuntimeException e) {
