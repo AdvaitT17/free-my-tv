@@ -208,12 +208,15 @@ final class HomeMode {
         Set<String> keep = new HashSet<>();
         if (pkgs.isEmpty()) return keep;
         // Only the package's own requested permissions: a shared user's would match by mistake. A line per package keeps
-        // the connection's read timeout from running out on a slow TV.
+        // the connection's read timeout from running out on a slow TV. A dump that doesn't name the package counts as
+        // "couldn't check": after a hang Android turns every dumpsys off ("Service dumps disabled due to hung system
+        // process.", #246), and an empty answer must not read as "nothing needed".
         String out = adb.shell("for p in " + String.join(" ", sorted(pkgs)) + "; do d=\"$(dumpsys package $p)\"; "
-                + "if printf '%s\\n' \"$d\" | sed -n -r '/requested permissions:/,/(install|runtime) permissions:|User [0-9]+:/p'"
+                + "if ! printf '%s\\n' \"$d\" | grep -q -F \"Package [$p]\"; then echo \"unknown $p\"; "
+                + "elif printf '%s\\n' \"$d\" | sed -n -r '/requested permissions:/,/(install|runtime) permissions:|User [0-9]+:/p'"
                 + " | grep -q TV_INPUT_HARDWARE || printf '%s\\n' \"$d\" | grep -q -E 'TV_INPUT_BUTTON|CONNECT_INPUT|AddAccessory';"
                 + " then echo \"keep $p\"; else echo \"- $p\"; fi; done; echo checked");
-        if (!out.contains("checked")) return null;
+        if (!out.contains("checked") || out.contains("unknown ")) return null;
         Matcher m = Pattern.compile("keep ([\\w.]+)").matcher(out);
         while (m.find()) keep.add(m.group(1));
         if (!keep.isEmpty()) AppLog.w("kept on, the TV's inputs or remote need them: " + String.join(", ", sorted(keep)));
