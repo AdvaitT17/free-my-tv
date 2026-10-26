@@ -202,14 +202,18 @@ final class WatchNext {
                 TvContract.WatchNextPrograms.COLUMN_POSTER_ART_URI,
                 TvContract.WatchNextPrograms.COLUMN_THUMBNAIL_URI,
                 TvContract.WatchNextPrograms.COLUMN_INTENT_URI));
-        // Preview programs have no engagement time.
+        // Preview programs have no engagement time or Watch Next type.
         if (TvContract.WatchNextPrograms.CONTENT_URI.equals(uri)) {
             projection.add(TvContract.WatchNextPrograms.COLUMN_LAST_ENGAGEMENT_TIME_UTC_MILLIS);
+            projection.add(TvContract.WatchNextPrograms.COLUMN_WATCH_NEXT_TYPE);
         }
         try (Cursor cur = cr.query(uri, projection.toArray(new String[0]), null, null, null)) {
             if (cur == null) return out;
             while (cur.moveToNext()) {
                 if ("0".equals(text(cur, TvContract.WatchNextPrograms.COLUMN_BROWSABLE))) continue;
+                // Saved for later, not something you're in the middle of.
+                if (number(cur, TvContract.WatchNextPrograms.COLUMN_WATCH_NEXT_TYPE)
+                        == TvContract.WatchNextPrograms.WATCH_NEXT_TYPE_WATCHLIST) continue;
                 String title = text(cur, TvContract.WatchNextPrograms.COLUMN_TITLE);
                 String pkg = text(cur, TvContract.WatchNextPrograms.COLUMN_PACKAGE_NAME);
                 if (title == null || pkg == null) continue;
