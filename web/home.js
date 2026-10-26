@@ -829,7 +829,7 @@
 
   // MARK: - City: typed with the TV's keyboard, found by Open-Meteo, as on Android (the weather is for its coordinates)
 
-  var cityFound = [], cityStatus = '', cityTimer = 0;
+  var cityFound = [], cityStatus = '', cityTimer = 0, citySeq = 0;
 
   /** The field to type in, the Search row, then the places found. */
   function cityRows() { return 2 + cityFound.length; }
@@ -846,6 +846,7 @@
     field.type = 'text';
     field.value = typed;
     field.placeholder = tr("Type the city's name");
+    field.setAttribute('aria-label', tr('City'));
     field.setAttribute('autocomplete', 'off');
     field.setAttribute('spellcheck', 'false');
     hover(field.parentNode, Z.CITY, 0);
@@ -889,7 +890,12 @@
   function setCityStatus(text) {
     cityStatus = text;
     clearTimeout(cityTimer);
-    if (text && text !== tr('Searching…')) cityTimer = setTimeout(function () { cityStatus = ''; if (st.zone === Z.CITY) renderCities(); }, 4000);
+    // Clears only the hint: a new render would rebuild the field and interrupt the TV's keyboard while someone types.
+    if (text && text !== tr('Searching…')) cityTimer = setTimeout(function () {
+      cityStatus = '';
+      var hint = st.zone === Z.CITY && $('citypick').querySelector('.hint');
+      if (hint) hint.textContent = tr('OK picks, Back cancels.');
+    }, 4000);
     if (st.zone === Z.CITY) renderCities();
   }
 
@@ -899,7 +905,9 @@
     if (!name.trim()) { st.city = 0; openCityField(); updateFocus(); return; }
     if (cityStatus === tr('Searching…')) return;
     setCityStatus(tr('Searching…'));
+    var mine = ++citySeq;   // an answer for a sheet already closed (and opened again) is dropped
     Data.findCity(name, function (err, found) {
+      if (mine !== citySeq) return;
       if (st.zone !== Z.CITY) { cityStatus = ''; return; }
       cityFound = found || [];
       if (cityFound.length) st.city = 2;   // on the first place found
@@ -913,6 +921,7 @@
     closeCityField();
     setClass($('citypick'), 'open', false);
     cityFound = [];
+    citySeq++;
     clearTimeout(cityTimer);
     cityStatus = '';
     if (place) {
