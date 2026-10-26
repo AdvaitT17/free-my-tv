@@ -162,8 +162,9 @@ final class HomeMode {
         "com.onn.bluetoothconnect", "com.onn.btpairoverlay", "com.onn.updatenotification", "com.gretzky.GlobalKey",
         "com.gretzky.hwinfo", "com.droidlogic", "com.droidlogic.tv.settings", "com.droidlogic.mictoggle",
         "com.droidlogic.launcher.provider", "com.droidlogic.android.tv.connecteddevices",
-        // HY300 projectors (Hotack, Allwinner H713): keystone and projection settings, the HDMI player, Miracast receiver
-        "com.htc.htcsettings", "com.softwinner.awlivetv", "com.softwinner.miracastReceiver",
+        // HY300 projectors (Hotack, Allwinner H713; Amlogic txhd2): keystone and projection settings, the HDMI player,
+        // Miracast receiver
+        "com.htc.htcsettings", "com.softwinner.awlivetv", "com.softwinner.miracastReceiver", "com.softwinner.tcorrection",
         // Amazon Fire TV: launcher, settings, setup, remote pairing, inputs, live TV, channel scan, OTA updates, Appstore
         // (every com.amazon.* is refused by mayTurnOff too)
         "com.amazon.tv.launcher", "com.amazon.firehomestarter", "com.amazon.tv.settings.v2", "com.amazon.tv.settings.core",
