@@ -167,6 +167,8 @@ public class SettingsActivity extends Activity {
         private String choiceNow = "";
         private final List<String[]> cities = new ArrayList<>();
         private String cityStatus = "";
+        private String updatesText = "";    // Home Settings' Updates row, read from Updates' file every 2 s at most
+        private long updatesReadAt;
         private final RectF tmp = new RectF(), rowRect = new RectF(), focusBox = new RectF();
         private JSONObject state = new JSONObject(), recs = new JSONObject();
         private boolean hasKey;
@@ -706,7 +708,7 @@ public class SettingsActivity extends Activity {
 
         private static final String[] UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"};
         /** Home Settings: language, temperature, theme, my photos, sounds, watch from the screensaver, weather, city, forecast,
-         *  now playing, quotes, then one row per coin. */
+         *  now playing, quotes, one row per coin, then updates (the last row). */
         private static final int PHOTOS_ROW = 3, SAVER_ROW = 5, WEATHER_ROW = 6, CITY_ROW = 7, FORECAST_ROW = 8, PLAYING_ROW = 9,
                 QUOTES_ROW = 10, COIN_ROWS = 11;
         /** Home Settings rows on screen at once (what fits above the hints at 1080p); a longer list scrolls. */
@@ -733,7 +735,13 @@ public class SettingsActivity extends Activity {
             l.add("Ethereum");
             l.add("Solana");
             if (dollar()) l.add(Ui.tr("Dollar"));
+            l.add(Ui.tr("Updates"));
             return l.toArray(new String[0]);
+        }
+
+        /** The Updates row: the last one, after the coins. */
+        private int updatesRow() {
+            return settingLabels().length - 1;
         }
 
         private String[] settingValues() {
@@ -756,7 +764,13 @@ public class SettingsActivity extends Activity {
             v[PLAYING_ROW] = onOff(Prefs.nowPlaying());
             v[QUOTES_ROW] = onOff(Prefs.quotes());
             // No quotes widget, nowhere to show prices: the coins read as off (and stay locked) until it is back on.
-            for (int i = COIN_ROWS; i < v.length; i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
+            for (int i = COIN_ROWS; i < v.length - 1; i++) v[i] = onOff(Prefs.quotes() && Prefs.coin(i - COIN_ROWS));
+            long now = SystemClock.uptimeMillis();
+            if (updatesText.isEmpty() || now - updatesReadAt > 2000) {
+                updatesReadAt = now;
+                updatesText = Updates.summary(getContext());
+            }
+            v[v.length - 1] = updatesText;
             return v;
         }
 
@@ -802,7 +816,7 @@ public class SettingsActivity extends Activity {
                 whyScroll = pickScroll;
                 for (int r = 0; r < n; r++) {
                     String need = need(r);
-                    whyRows[r] = screen == HOME_SETTINGS && pickScroll + r >= COIN_ROWS && !Prefs.quotes()
+                    whyRows[r] = screen == HOME_SETTINGS && pickScroll + r >= COIN_ROWS && pickScroll + r < updatesRow() && !Prefs.quotes()
                             ? Ui.tr("Turn on the Quotes widget to pick its coins.")
                             : need == null ? null : Capabilities.missing(getContext(), need);
                 }
@@ -1034,7 +1048,7 @@ public class SettingsActivity extends Activity {
                     break;
                 case QUOTES_ROW: Prefs.setQuotes(!Prefs.quotes()); break;
                 default:
-                    if (!Prefs.quotes()) return;
+                    if (row == updatesRow() || !Prefs.quotes()) return;
                     Prefs.setCoin(row - COIN_ROWS, !Prefs.coin(row - COIN_ROWS));
                     break;
             }
@@ -1059,6 +1073,33 @@ public class SettingsActivity extends Activity {
                 return true;
             });
             dialog.show();
+        }
+
+        // MARK: - Updates (GitHub's releases)
+
+        /** OK on Updates: installs one that's ready, else checks now (and, if one comes ready, installs it). */
+        private void updateNow() {
+            Context c = getContext().getApplicationContext();
+            String state = Updates.state(c).optString("state");
+            if (Updates.READY.equals(state)) {
+                Updates.install(c);
+                return;
+            }
+            if (Updates.CHECKING.equals(state) || Updates.DOWNLOADING.equals(state)) return;
+            updatesText = Ui.tr("Checking…");
+            updatesReadAt = SystemClock.uptimeMillis();
+            invalidate();
+            spoken.focusMoved();
+            new Thread(() -> {
+                Updates.check(c);
+                if (Updates.READY.equals(Updates.state(c).optString("state"))) Updates.install(c);
+                handler.post(() -> {
+                    updatesReadAt = 0;
+                    updatesText = "";
+                    invalidate();
+                    spoken.focusMoved();
+                });
+            }, "update").start();
         }
 
         // MARK: - My Photos (sent from a computer: tools/photos.py)
@@ -1366,6 +1407,9 @@ public class SettingsActivity extends Activity {
                 return;
             } else if (screen == HOME_SETTINGS && pickScroll + focus == PHOTOS_ROW) {
                 askRemovePhotos();
+                return;
+            } else if (screen == HOME_SETTINGS && pickScroll + focus == updatesRow()) {
+                updateNow();
                 return;
             } else if (screen == POWER) {
                 activatePower();
