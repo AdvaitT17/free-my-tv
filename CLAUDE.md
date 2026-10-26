@@ -245,6 +245,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   and `_height`, `ro.config.low_ram`). There every pixel and every MB counts: `Backdrop` builds its images at the UI's
   size (and the picks use TMDB's w1280), and the shelf logos have a copy at the resting size and one at the focused
   size, so both draw pixel for pixel.
+- TMDB's API is reached at `api.tmdb.org`, TMDB's own mirror of `api.themoviedb.org` on the images' domain
+  (`image.tmdb.org`): some ISPs block the other name (Jio in India, #327).
 - `HomeMode` runs every switch as a background job (`ModeJob`) in the main process; the UI is in the `:home`
   process. The sleep timer's overlay (`SleepOverlay`) runs alone in `:sleep`, so its foreground service doesn't keep
   the home screen in memory under the app in front; the remote's key service lives in `:keys` (below).

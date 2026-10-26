@@ -262,7 +262,7 @@ var Data = (function () {
 
   var KEY = (CONFIG.tmdbKey || '').trim();
   var REGION = Place.country;
-  var API = 'https://api.themoviedb.org/3';
+  var API = 'https://api.tmdb.org/3';   // TMDB's own mirror of api.themoviedb.org: some ISPs block the other name (#327)
 
   /** Service name on TMDB (part of it, lowercase) → our key, how to find its app on the TV (id, name), its name. */
   var SERVICES = [

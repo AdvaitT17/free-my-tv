@@ -55,7 +55,8 @@ final class Recs {
 
     interface Listener { void onRecs(); }
 
-    private static final String API = "https://api.themoviedb.org/3";
+    // TMDB's own mirror of api.themoviedb.org, on the images' domain: some ISPs block the other name (Jio, #327)
+    private static final String API = "https://api.tmdb.org/3";
     /** The backdrops: on a 720p UI, TMDB's 1280-wide copy shows the same and is lighter to download and decode. */
     private static final String IMAGES = "https://image.tmdb.org/t/p/" + (Backdrop.W <= 1280 ? "w1280" : "original");
     /** TMDB's Animation genre (movies and shows: cartoons and anime), left out with hide_animation=true. */
