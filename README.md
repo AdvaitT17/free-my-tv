@@ -155,7 +155,7 @@ The first values come from `config.properties`, created by the first build (Goog
 | `hide_apps` | Apps to leave out of the shelf, All Apps and the picks, by id or name (part of it), comma separated; for apps the TV ships that can't be uninstalled, like Samsung's built-in Netflix. LG and Samsung only | empty |
 | `shelf_apps` | The shelf's apps in this order, by id or name (part of it), comma separated; changing it wins once over the shelf picked on the TV. On Samsung, a whole app id also brings an app the TV leaves out of its list, like one installed in Developer Mode. LG and Samsung only | empty |
 | `drawer_first` | `true` opens the home screen with the drawer already out (apps in the middle, inputs, weather and prices below), so nothing has to be scrolled to reach the inputs; Back closes it to the full page. For a TV whose streaming apps live on a box, where the picks stay empty. LG and Samsung only | `false` |
-| `immich_server`, `immich_api_key` | Optional: your [Immich](https://immich.app) server and an API key: [your own photos](#from-an-immich-server) come from it, on TVs with the Immich app. Google TV only | empty |
+| `immich_server` | Optional: your [Immich](https://immich.app) server: [your own photos](#from-an-immich-server) come from it, on TVs with the Immich app (its key goes to the TV with `tools/send_key.py`, never here). Google TV only | empty |
 
 Changed something? Run `./build.sh` and install again. Keep `freemytv.keystore`: updates are signed with it.
 
@@ -179,7 +179,15 @@ They land in the app's own folder on the TV (no permission needed); on Android 1
 
 #### From an Immich server
 
-With an [Immich](https://immich.app) server and its Android TV app installed on the TV ([Immich for Android TV](https://github.com/giejay/Immich-Android-TV), `nl.giejay.android.tv.immich`), the TV fetches them by itself. In `config.properties`, set `immich_server` to its address (`http://192.168.1.20:2283` on your network, or its `https://` address) and `immich_api_key` to a key made in Immich → *Account Settings* → *API Keys* (`asset.read`, `asset.view`, `asset.download` and `album.read` are enough), then build and install again. Every 6 hours, when the home screen opens, a new random choice of 40 photos comes in (at least 1080 pixels on their short side), one at a time, through the same import; the oldest go to keep 100. *Home Settings* → *My Photos* then chooses where they come from: *Default* (none of yours: the picks' photos), *Immich: all photos* or one of its albums. Without the Immich app on the TV, *My Photos* stays as described above, even with a server set: Free My TV can't read the app's own server and key (they're its private data), so they go in `config.properties`. A server given as `http://` must be on your own network (a private address like `192.168.1.20`, or a `.local`, `.lan` or `.home.arpa` name; the build stops otherwise), and only its address may be reached without HTTPS; anything else needs `https://` (over Tailscale, the server's `https://<machine>.<tailnet>.ts.net` address, which Tailscale can serve with a certificate). It's your key: `config.properties` stays out of git.
+With an [Immich](https://immich.app) server and its Android TV app installed on the TV ([Immich for Android TV](https://github.com/giejay/Immich-Android-TV), `nl.giejay.android.tv.immich`), the TV fetches them by itself. In `config.properties`, set `immich_server` to its address (`http://192.168.1.20:2283` on your network, or its `https://` address), then build and install again. Then make a key in Immich → *Account Settings* → *API Keys* (`asset.read`, `asset.view`, `asset.download` and `album.read` are enough) and send it to the TV:
+
+```bash
+python3 tools/send_key.py <TV IP> immich_api_key
+```
+
+It asks for the key without showing it, checks it with your server, and puts it in the app's private storage on the TV over adb. It never goes into the APK, which any app on the TV can read, nor into `config.properties`; `--remove` takes it off the TV.
+
+Every 6 hours, when the home screen opens, a new random choice of 40 photos comes in (at least 1080 pixels on their short side), one at a time, through the same import; the oldest go to keep 100. *Home Settings* → *My Photos* then chooses where they come from: *Default* (none of yours: the picks' photos), *Immich: all photos* or one of its albums. Without the Immich app on the TV, *My Photos* stays as described above, even with a server set: Free My TV can't read the app's own server and key (they're its private data), so it needs its own. A server given as `http://` must be on your own network (a private address like `192.168.1.20`, or a `.local`, `.lan` or `.home.arpa` name; the build stops otherwise), and only its address may be reached without HTTPS; anything else needs `https://` (over Tailscale, the server's `https://<machine>.<tailnet>.ts.net` address, which Tailscale can serve with a certificate).
 
 ## Going back
 

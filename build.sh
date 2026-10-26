@@ -93,6 +93,12 @@ lan_server() {   # lan_server <key>: checks it; the host of an http:// one joins
   esac
 }
 lan_server immich_server
+# Keys that would let another app on the TV into the user's own servers stay out of the APK: tools/send_key.py sends
+# them to the TV (Secrets).
+if [ -n "$(prop immich_api_key '')" ]; then
+  echo "config.properties: immich_api_key isn't built into the app (any app on the TV could read it there)." >&2
+  echo "Send it to the TV instead (python3 tools/send_key.py <TV IP> immich_api_key), then remove it here." >&2
+fi
 
 rm -rf out && mkdir -p out/gen/io/freemytv out/classes
 cat > out/gen/io/freemytv/Config.java <<EOF
@@ -114,7 +120,6 @@ final class Config {
     static final String HIDE_SERVICES = "$(prop hide_services '')";
     static final String THEME = "$(prop theme auto)";
     static final String IMMICH_SERVER = "$(prop immich_server '')";
-    static final String IMMICH_KEY = "$(prop immich_api_key '')";
     static final boolean DISABLE_ASSISTANT = $ASSIST;
     static final boolean SHOW_CRYPTO = $CRYPTO;
     static final boolean HIDE_ANIMATION = $ANIMATION;

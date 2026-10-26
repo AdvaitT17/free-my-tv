@@ -21,8 +21,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * My Photos from an Immich server (immich_server and immich_api_key in config.properties): every 6 hours, a random
- * choice of its photos goes through the same import as the ones a computer sends (Photos: upright, whole, the
+ * My Photos from an Immich server (immich_server in config.properties, its key sent by tools/send_key.py into Secrets,
+ * never in the APK): every 6 hours, a random choice of its photos goes through the same import as the ones a computer sends (Photos: upright, whole, the
  * screensaver's size), one at a time, so at most one original is on disk at once. The oldest go to make room. Only on
  * a TV with the Immich app (APP): elsewhere My Photos stays as it was, even with a server set.
  */
@@ -44,18 +44,22 @@ final class ImmichPhotos {
     private static volatile boolean running;
 
     /**
-     * Immich's own Android TV app. Its server and key are its private data, so ours stay in config.properties; the app
-     * being there is what says this TV is meant to show Immich.
+     * Immich's own Android TV app. Its server and key are its private data, so ours come from config.properties and
+     * Secrets; the app being there is what says this TV is meant to show Immich.
      */
     static final String APP = "nl.giejay.android.tv.immich";
     private static volatile boolean appThere;
-    private static volatile long appCheckedAt = -1;
+    private static volatile String key = "";
+    private static volatile long checkedAt = -1;
 
-    /** A server and a key in config.properties, and the Immich app on this TV (looked up again every 30 s at most). */
+    /**
+     * A server in config.properties, its key sent to this TV (Secrets) and the Immich app on it, all looked up again
+     * every 30 s at most: the settings screen asks every frame.
+     */
     static boolean configured(Context c) {
-        if (Config.IMMICH_SERVER.trim().isEmpty() || Config.IMMICH_KEY.trim().isEmpty()) return false;
+        if (Config.IMMICH_SERVER.trim().isEmpty()) return false;
         long now = SystemClock.uptimeMillis();
-        if (appCheckedAt < 0 || now - appCheckedAt > 30_000) {
+        if (checkedAt < 0 || now - checkedAt > 30_000) {
             boolean there;
             try {
                 c.getPackageManager().getApplicationInfo(APP, 0);
@@ -64,9 +68,10 @@ final class ImmichPhotos {
                 there = false;
             }
             appThere = there;
-            appCheckedAt = now;
+            key = Secrets.get(c, Secrets.IMMICH_KEY);
+            checkedAt = now;
         }
-        return appThere;
+        return appThere && !key.isEmpty();
     }
 
     /** An album with photos in it: what My Photos can show. */
@@ -176,7 +181,7 @@ final class ImmichPhotos {
         HttpURLConnection http = (HttpURLConnection) new URL(server + path).openConnection();
         http.setConnectTimeout(10_000);
         http.setReadTimeout(30_000);
-        http.setRequestProperty("x-api-key", Config.IMMICH_KEY.trim());
+        http.setRequestProperty("x-api-key", key);
         http.setRequestProperty("Accept", "application/json, image/*");
         return http;
     }
