@@ -168,10 +168,6 @@ final class Prefs {
         return key != null && offServices().contains("," + key + ",");
     }
 
-    static boolean anyServiceOff() {
-        return offServices().length() > 1;
-    }
-
     static void setServiceOff(String key, boolean off) {
         String list = offServices();
         list = off ? (serviceOff(key) ? list : list + key + ",") : list.replace("," + key + ",", ",");

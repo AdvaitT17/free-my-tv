@@ -703,6 +703,7 @@ public class SettingsActivity extends Activity {
                                 screen = HOME_SETTINGS;
                             } else if (screen == PICK_FROM) {
                                 countServicesOff();
+                                pickScroll = 0;   // the Picks screen has two rows
                                 focus = 1;
                                 screen = PICKS;
                             } else {
