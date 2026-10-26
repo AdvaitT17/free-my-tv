@@ -3488,7 +3488,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 AppLog.w("continue watching link: " + e.getMessage());
             }
         }
-        if (!openApp(it)) showToast(Ui.trf("Couldn't open {app}.", "app", it.title));
+        if (!openApp(it)) showToast(Ui.trf("Couldn't open {app}.", "app", appName(it)));
     }
 
     /**
@@ -3511,6 +3511,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         intent.setFlags(intent.getFlags() & ~(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION));
         return intent;
+    }
+
+    /** The item's app by name, for a toast (its package if the name is unknown). */
+    private static String appName(WatchNext.Item it) {
+        return it.app != null && !it.app.isEmpty() ? it.app : it.pkg;
     }
 
     /** The item's app, from its start (guarded like HomeApps.open: a missing or refusing app shows a toast). */
@@ -3643,7 +3648,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         } else if (choice == 1) {
             click.open();
             if (openApp(it)) return;
-            showToast(Ui.trf("Couldn't open {app}.", "app", it.app != null && !it.app.isEmpty() ? it.app : it.pkg));
+            showToast(Ui.trf("Couldn't open {app}.", "app", appName(it)));
         } else {
             click.move();
         }
