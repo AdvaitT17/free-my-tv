@@ -114,7 +114,7 @@ stays, and Free My TV opens with a long press of a number key.
 
 ## Installing it on a Samsung TV (Tizen)
 
-On Samsung it's an app too (2016 and newer, Tizen 2.4+; TizenBrew needs 2017 and newer), installed through Samsung's
+On Samsung it's an app too (Tizen 2.3+: 2015 and newer, one 2015 TV reported, #317; TizenBrew needs 2017 and newer), installed through Samsung's
 Developer Mode; Samsung's home screen stays. Two ways:
 
 - **The release, no tools:** TizenBrew Installer (github.com/reisxd/TizenBrewInstaller) installs the latest GitHub
@@ -136,7 +136,7 @@ Developer Mode; Samsung's home screen stays. Two ways:
    JDK 17's .jdk folder>` (Homebrew: `/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk`). That `tizen` signs natively.
 4. **Certificate, once:** 2023+ TVs (Tizen 7+) need a Samsung certificate, made with their Samsung account for this TV
    (its DUID): the plugin's Samsung profile opens the browser for them to sign in, or Tizen Studio's Certificate
-   Manager does it. 2016-2022 TVs take a Tizen certificate (`tizen certificate`, then `tizen security-profiles add`
+   Manager does it. 2015-2022 TVs take a Tizen certificate (`tizen certificate`, then `tizen security-profiles add`
    and `tizen cli-config "profiles.path=<home>/tizen-studio-data/profile/profiles.xml"`; on macOS the passwords go to
    the login Keychain). Certificate passwords are theirs: they type them in their own terminal, never in the chat.
 5. **Settings:** the same `config.properties`; the TMDB key rules above apply.
@@ -144,7 +144,9 @@ Developer Mode; Samsung's home screen stays. Two ways:
    signed with "<profile>")`.
 7. **Install:** `python3 tizen/install.py <IP>`: it pushes the app over SDB (port 26101), installs it with the TV's
    `0 vd_appinstall` and opens it with `0 was_execute` (tested on 2016 Tizen 2.4, 2017 Tizen 3.0, 2019 Tizen 5.0 and
-   2024 Tizen 9.0 TVs; Tizen 2.4 has no `sdk_toolpath`, so it pushes to `/opt/usr/apps/tmp`); it only reports success
+   2024 Tizen 9.0 TVs, and reported on a 2015 Tizen 2.3 one; Tizen 2.x has no `sdk_toolpath`, so it pushes to
+   `/opt/usr/apps/tmp`; on 2015 firmware `developerMode` on port 8001 can read 0 while SDB works, and SDB resets the
+   connection when the TV's Host PC IP isn't this computer's current one); it only reports success
    when the TV says `install completed` (`cmd_ret:0` comes after failures too). `--uninstall` removes
    it; some TVs' sdbd doesn't answer that, and then it's removed on the TV (Apps, Settings, Free My TV, Delete).
    With Samsung's tools instead: `sdb connect <IP>`, `tizen install -n FreeMyTV-tizen.wgt -t <serial from sdb
