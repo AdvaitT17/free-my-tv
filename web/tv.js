@@ -13,9 +13,10 @@ var TV = (function () {
   var calls = [];   // a bridge is collected if nothing holds it before its reply arrives
   var tizen2 = samsung && /Tizen 2\./.test(navigator.userAgent);
   // Tizen 2 (2016 TVs, WebKit 538) repaints every shadow on every frame of a focus animation: home.css turns them off.
-  // So do TVs with 1 GB (an LG on webOS TV Lite 10, MT5889, 1.3 GB: 23-28 fps moving along the shelf, 60 with lite;
-  // shadows off alone, 45). webOS 3 to 5 and Tizen 3 have no deviceMemory.
-  if (tizen2 || ((webos || samsung) && navigator.deviceMemory && navigator.deviceMemory <= 1)) {
+  // So do TVs under 2 GB that draw the page at twice its size (an LG on webOS TV Lite 10, MT5889, 1.3 GB, ratio 2:
+  // 23-28 fps moving along the shelf, 60 with lite; shadows off alone, 45). deviceMemory rounds down to 1 under 2 GB on
+  // webOS 5+ and Tizen 5+, where 1.5 GB TVs at a ratio of 1 run smoothly.
+  if (tizen2 || ((webos || samsung) && navigator.deviceMemory && navigator.deviceMemory <= 1 && (window.devicePixelRatio || 1) > 1)) {
     document.documentElement.className += ' lite';
   }
 
