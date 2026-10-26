@@ -344,8 +344,10 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   can't open the TV's settings (`TV.canOpenSettings`). `web/tv.js` is the
   TV's side: on LG, Luna (`listLaunchPoints`, `launch`, the inputs; where webOS 6 and newer deny `listLaunchPoints`
   to Developer Mode apps, the list comes from the TV's remote control API on `ws://127.0.0.1:3000` once the TV has
-  allowed it (it asks once; a "no" isn't asked again), and until then from `getAppLoadStatus` over a list of known
-  app ids, which shows the logo bundled in `web/icons/` where there is one, otherwise the name on the brand's color);
+  allowed it (it asks once; a "no" isn't asked again; firmware that gives the page its own origin,
+  `file://io.freemytv-webos`, gets 1008 "invalid origin" there, and the call goes through `webos/service`, a JS
+  service in the package whose handshake says `file://`; webOS 22 with 2026 firmware tested), and until then from
+  `getAppLoadStatus` over a list of known app ids, which shows the logo bundled in `web/icons/` where there is one, otherwise the name on the brand's color);
   on Samsung, `tizen.application` (`getAppsInfo`, `launch`), the `VIDEOSOURCE` property and
   `tizen.tvwindow.setSource` for the inputs, then Samsung's viewer (`org.tizen.tv-viewer`) to show them. Samsung's own
   data is unreliable: on Tizen 3 no app's `iconPath` loads (on Tizen 4 and 5, YouTube's and Prime Video's are a
