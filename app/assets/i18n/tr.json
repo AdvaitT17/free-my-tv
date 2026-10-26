@@ -95,6 +95,7 @@
  "Not installed": "Yüklü değil",
  "Nothing": "Hiçbiri",
  "Now Playing widget": "Şimdi çalıyor widget'ı",
+ "Now playing: {what}": "Şimdi çalıyor: {what}",
  "OK adds or removes (up to {n}). ← → change the order.": "OK ekler veya çıkarır (en fazla {n}). ← → sırayı değiştirir.",
  "OK adds or removes a button. ← → change the order.": "OK düğme ekler veya çıkarır. ← → sırayı değiştirir.",
  "OK adds or removes an app. ← → change the order.": "OK bir uygulama ekler veya çıkarır. ← → sırayı değiştirir.",

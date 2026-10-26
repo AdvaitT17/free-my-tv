@@ -309,7 +309,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   quick toggles and a revert can't cross), `verifyNow` does the same after a boot or an update, and a screen that finds
   it on but not allowed asks once.
   It unbinds itself as soon as it connects (the permission is all it's for), and the home screen and the screensaver
-  watch the sessions only while they show. The line is cut to fit when the title changes, never while drawing.
+  watch the sessions only while they show. The line is cut to fit when the title changes, never while drawing; the
+  home screen's bars bounce again only for a new title (`Watch.title`), and TalkBack announces it then.
 - HY300 projectors (Hotack, Allwinner H713, Android 11 tested; the build claims to be an `askey`/`adt3`): the stock
   home screen and screensaver are `com.htc.htclauncherhighenglishd08`, which also carries an ad SDK (`com.zeasn.ad`).
   Keystone, zoom and projection mode live in `com.htc.htcsettings` (`action.htcsettings.prjsettings`), and the Miracast
