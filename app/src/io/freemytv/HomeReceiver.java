@@ -13,22 +13,29 @@ public class HomeReceiver extends BroadcastReceiver {
         String action = intent.getAction();
         if (Intent.ACTION_BOOT_COMPLETED.equals(action)) {
             HomeMode.bootCheck(context);
+            Updates.schedule(context);
         } else if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
             HomeMode.verify(context);   // app updated: complete Free My TV mode if something is missing
             HomeMode.ensureRemoteService(context, 3_000);
-            Updates.cleanUp(context);
+            Updates.schedule(context);
+            later(() -> Updates.cleanUp(context));
         } else if (Updates.ACTION.equals(action)) {
-            Updates.status(context, intent);
+            later(() -> Updates.status(context, intent));
         } else if (SleepTimer.ACTION.equals(action)) {
             long setAt = intent.getLongExtra("setAt", 0);
-            PendingResult result = goAsync();   // ADB is network: off the main thread
-            new Thread(() -> {
-                try {
-                    SleepTimer.fire(context, setAt);
-                } finally {
-                    result.finish();
-                }
-            }).start();
+            later(() -> SleepTimer.fire(context, setAt));   // ADB is network
         }
+    }
+
+    /** Off the main thread (Updates may wait for a check under way), with the notice held open until it's done. */
+    private void later(Runnable work) {
+        PendingResult result = goAsync();
+        new Thread(() -> {
+            try {
+                work.run();
+            } finally {
+                result.finish();
+            }
+        }).start();
     }
 }
