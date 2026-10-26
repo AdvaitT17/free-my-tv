@@ -37,6 +37,13 @@
         <package android:name="com.cbs.ott" />
         <package android:name="com.cbs.ca" />
         <package android:name="com.bskyb.nowtv.beta" />
+        <package android:name="de.swr.avp.ard.tv" />
+        <package android:name="com.zdf.android.mediathek" />
+        <package android:name="tv.arte.plus7" />
+        <package android:name="de.prosiebensat1digital.seventv" />
+        <package android:name="de.rtli.tvnow" />
+        <package android:name="de.sky.online" />
+        <package android:name="de.telekom.magentatv.tv" />
         <package android:name="com.peacocktv.peacockandroid" />
         <package android:name="com.peacock.peacockfiretv" />
         <package android:name="com.globo.globotv" />
@@ -59,6 +66,7 @@
         <package android:name="com.mediatek.tv.oneworld.tvcenter" />
         <!-- HY300 projectors: keystone and Miracast (drawer shortcuts), Allwinner's player for HDMI; MIUI TV's source player -->
         <package android:name="com.htc.htcsettings" />
+        <package android:name="com.softwinner.tcorrection" />
         <package android:name="com.softwinner.miracastReceiver" />
         <package android:name="com.softwinner.awlivetv" />
         <package android:name="com.xiaomi.mitv.tvplayer" />

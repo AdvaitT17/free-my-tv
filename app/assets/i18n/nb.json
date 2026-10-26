@@ -99,6 +99,7 @@
  "Not installed": "Ikke installert",
  "Nothing": "Ingenting",
  "Now Playing widget": "Spilles nå-widget",
+ "Now playing: {what}": "Spilles nå: {what}",
  "OK adds or removes (up to {n}). ← → change the order.": "OK legger til eller fjerner (opptil {n}). ← → endrer rekkefølgen.",
  "OK adds or removes a button. ← → change the order.": "OK legger til eller fjerner en knapp. ← → endrer rekkefølgen.",
  "OK adds or removes an app. ← → change the order.": "OK legger til eller fjerner en app. ← → endrer rekkefølgen.",

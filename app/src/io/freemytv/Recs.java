@@ -4,6 +4,8 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.net.ConnectivityManager;
+import android.net.Network;
 import android.os.Handler;
 import android.os.Looper;
 
@@ -53,7 +55,8 @@ final class Recs {
 
     interface Listener { void onRecs(); }
 
-    private static final String API = "https://api.themoviedb.org/3";
+    // TMDB's own mirror of api.themoviedb.org, on the images' domain: some ISPs block the other name (Jio, #327)
+    private static final String API = "https://api.tmdb.org/3";
     /** The backdrops: on a 720p UI, TMDB's 1280-wide copy shows the same and is lighter to download and decode. */
     private static final String IMAGES = "https://image.tmdb.org/t/p/" + (Backdrop.W <= 1280 ? "w1280" : "original");
     /** TMDB's Animation genre (movies and shows: cartoons and anime), left out with hide_animation=true. */
@@ -85,6 +88,14 @@ final class Recs {
         {"crunchyroll", "crunchyroll", "com.crunchyroll.crunchyroid"},
         {"now tv", "now", "com.bskyb.nowtv.beta"},     // UK: Sky's NOW (TMDB: "Now TV", "Now TV Cinema")
         {"oneplay", "oneplay", "net.cme.voyo.cz.tvapp"},    // Czechia: Voyo and O2 TV became Oneplay, same app
+        // Germany (TMDB's watch providers for DE)
+        {"ard mediathek", "ard", "de.swr.avp.ard.tv"},
+        {"zdf", "zdf", "com.zdf.android.mediathek"},
+        {"arte", "arte", "tv.arte.plus7"},
+        {"joyn", "joyn", "de.prosiebensat1digital.seventv"},   // TMDB: "Joyn" and "Joyn Plus", same app
+        {"rtl+", "rtl", "de.rtli.tvnow"},
+        {"wow", "wow", "de.sky.online"},                       // Sky's WOW (was Sky Ticket)
+        {"magenta", "magenta", "de.telekom.magentatv.tv"},     // TMDB: "MagentaTV" and "Magenta TV+"
         // Russia (TMDB's watch providers for RU)
         {"okko", "okko", "ru.more.play"},
         {"kinopoisk", "kinopoisk", "ru.kinopoisk.tv"},
@@ -92,6 +103,8 @@ final class Recs {
         {"amediateka", "amediateka", "ru.amediateka"},
         {"more tv", "wink", "ru.rt.video.app.tv"},   // TMDB: "More TV" (more.tv is part of Rostelecom's Wink now)
     };
+    /** Services matched by their whole name, where a part would catch another: "WOW Presents Plus", "Belas Artes à La Carte". */
+    private static final Set<String> WHOLE_NAME = new HashSet<>(Arrays.asList("wow", "arte"));
     private static final Map<String, String> SERVICE_NAME = new HashMap<>();
     static {
         SERVICE_NAME.put("netflix", "Netflix");
@@ -108,6 +121,13 @@ final class Recs {
         SERVICE_NAME.put("crunchyroll", "Crunchyroll");
         SERVICE_NAME.put("now", "NOW");
         SERVICE_NAME.put("oneplay", "Oneplay");
+        SERVICE_NAME.put("ard", "ARD Mediathek");
+        SERVICE_NAME.put("zdf", "ZDF");
+        SERVICE_NAME.put("arte", "ARTE");
+        SERVICE_NAME.put("joyn", "Joyn");
+        SERVICE_NAME.put("rtl", "RTL+");
+        SERVICE_NAME.put("wow", "WOW");
+        SERVICE_NAME.put("magenta", "MagentaTV");
         SERVICE_NAME.put("kinopoisk", "Кинопоиск");
         SERVICE_NAME.put("premier", "Premier");
         SERVICE_NAME.put("amediateka", "Амедиатека");
@@ -154,6 +174,24 @@ final class Recs {
             listLanguage = cache.getString("language", cache.getBoolean("english", false) ? "en" : "pt");
             keyStamp = cache.getLong("keyStamp", 0);
         } catch (Exception ignored) {
+        }
+        // Right after the TV starts, the first fetch runs before the Wi-Fi is up and fails, which would hold the old
+        // picks for the 10 minutes after a failure: as soon as the network comes, try again.
+        try {
+            ConnectivityManager cm = c.getSystemService(ConnectivityManager.class);
+            if (cm != null) cm.registerDefaultNetworkCallback(new ConnectivityManager.NetworkCallback() {
+                @Override public void onAvailable(Network network) {
+                    if (failedAt == 0) return;
+                    failedAt = 0;   // the next screen to show fetches at once
+                    main.postDelayed(() -> {
+                        if (listeners.isEmpty()) return;   // nothing showing: no downloads under another app
+                        AppLog.w("recommendations: network up, fetching again");
+                        refreshIfStale();
+                    }, 2000);   // the routes and DNS settle just after
+                }
+            });
+        } catch (RuntimeException e) {
+            AppLog.w("recommendations: no network callback: " + e.getMessage());
         }
     }
 
@@ -602,7 +640,7 @@ final class Recs {
         for (String[] s : SERVICES) {
             // Apple TV: only the streaming service (TMDB provider 350); provider 2 is the Apple TV Store (rent or buy).
             if (s[1].equals("appletv") && providerId != 350) continue;
-            if (!(s[0].equals("max") ? n.matches(".*\\bmax\\b.*") : n.contains(s[0]))) continue;
+            if (!(s[0].equals("max") ? n.matches(".*\\bmax\\b.*") : WHOLE_NAME.contains(s[0]) ? n.equals(s[0]) : n.contains(s[0]))) continue;
             if (installed(s[2])) return s;
             if (first == null) first = s;
         }
@@ -671,7 +709,7 @@ final class Recs {
                     // Not a channel sold inside another app ("AppleTV+ Amazon Channel", "Paramount+ (Via Amazon Prime)"):
                     // that link opens Amazon or Apple's app, not the one the pick is for.
                     boolean resold = name.contains("channel") || name.contains("(via");
-                    boolean same = !resold && (want.equals("max") ? name.equals("max") : name.contains(want));
+                    boolean same = !resold && (want.equals("max") || WHOLE_NAME.contains(want) ? name.equals(want) : name.contains(want));
                     if (same && s.optString("type").equals("sub") && s.optString("web_url").startsWith("https://")) link = s.optString("web_url");
                 }
             }

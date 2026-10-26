@@ -100,11 +100,25 @@ def build(preview, config, generic=False):
             dirs.add(parent)
             entries.append((base + '/' + parent, None))
         entries.append((base + '/' + path, app[path]))
-    package = json.dumps({'id': app_id, 'version': version, 'app': app_id}, indent=2).encode('utf-8')
+    # The JS service that reaches the TV's remote control API where the page's origin is refused (webos/service).
+    service_id = app_id + '.service'
+    with open(os.path.join(ROOT, 'webos', 'service', 'service.js'), 'rb') as f:
+        service = {'service.js': f.read(),
+                   'package.json': json.dumps({'name': service_id, 'version': version, 'main': 'service.js'},
+                                              indent=2).encode('utf-8'),
+                   'services.json': json.dumps({'id': service_id, 'description': 'Free My TV',
+                                                'services': [{'name': service_id, 'description': 'Free My TV'}]},
+                                               indent=2).encode('utf-8')}
+    service_base = 'usr/palm/services/' + service_id
+    entries += [('usr/palm/services', None), (service_base, None)]
+    entries += [(service_base + '/' + name, service[name]) for name in sorted(service)]
+
+    package = json.dumps({'id': app_id, 'version': version, 'app': app_id, 'services': [service_id]},
+                         indent=2).encode('utf-8')
     entries += [('usr/palm/packages', None), ('usr/palm/packages/' + app_id, None),
                 ('usr/palm/packages/' + app_id + '/packageinfo.json', package)]
 
-    size = sum(len(d) for d in app.values()) + len(package)
+    size = sum(len(d) for d in app.values()) + sum(len(d) for d in service.values()) + len(package)
     control = ('Package: %s\nVersion: %s\nSection: misc\nPriority: optional\nArchitecture: all\nInstalled-Size: %d\n'
                'Maintainer: Free My TV <https://freemytv.io>\nDescription: A fast, ad-free home screen.\n'
                'webOS-Package-Format-Version: 2\nwebOS-Packager-Version: 1.0.0\n' % (app_id, version, size))

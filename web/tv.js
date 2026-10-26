@@ -13,7 +13,12 @@ var TV = (function () {
   var calls = [];   // a bridge is collected if nothing holds it before its reply arrives
   var tizen2 = samsung && /Tizen 2\./.test(navigator.userAgent);
   // Tizen 2 (2016 TVs, WebKit 538) repaints every shadow on every frame of a focus animation: home.css turns them off.
-  if (tizen2) document.documentElement.className += ' lite';
+  // So do TVs under 2 GB that draw the page at twice its size (an LG on webOS TV Lite 10, MT5889, 1.3 GB, ratio 2:
+  // 23-28 fps moving along the shelf, 60 with lite; shadows off alone, 45). deviceMemory rounds down to 1 under 2 GB on
+  // webOS 5+ and Tizen 5+, where 1.5 GB TVs at a ratio of 1 run smoothly.
+  if (tizen2 || ((webos || samsung) && navigator.deviceMemory && navigator.deviceMemory <= 1 && (window.devicePixelRatio || 1) > 1)) {
+    document.documentElement.className += ' lite';
+  }
 
   /** One Luna call; done(result) with null on failure. */
   function luna(uri, params, done) {
@@ -56,7 +61,9 @@ var TV = (function () {
 
   // webOS 6 gives Developer Mode apps only the "public" group, which leaves out listLaunchPoints. There the list comes
   // from the TV's remote control API on 127.0.0.1:3000 (the one LG's phone app uses), which takes file:// pages.
-  // The TV asks once to allow it; the key it gives back is kept.
+  // The TV asks once to allow it; the key it gives back is kept. Newer firmware gives the page its own origin
+  // (file://<app id>-webos), which the API refuses with 1008 "invalid origin": there our JS service (webos/service)
+  // makes the call.
   var SSAP_KEY = 'fmtv.ssapKey', SSAP_REFUSED = 'fmtv.ssapRefused';
 
   /** One call to the remote control API; done(result) with null on failure. */
@@ -92,7 +99,23 @@ var TV = (function () {
         finish(m.type !== 'error' && m.payload && m.payload.returnValue !== false ? m.payload : null);
       }
     };
-    ws.onerror = ws.onclose = function () { finish(null); };
+    ws.onerror = function () { finish(null); };
+    ws.onclose = function (event) {
+      if (event.code === 1008 && !finished) viaService(); else finish(null);
+    };
+    function viaService() {
+      clearTimeout(timer);
+      timer = setTimeout(function () { finish(null); }, 100000);   // the service waits 90 s for the prompt
+      luna('luna://' + self + '.service/ssap', {uri: uri, clientKey: key}, function (res) {
+        if (res && res.clientKey) {
+          try { localStorage.setItem(SSAP_KEY, res.clientKey); } catch (e) {}
+        }
+        if (res && res.refused) {
+          try { localStorage.setItem(SSAP_REFUSED, '1'); } catch (e) {}   // the person said no on the TV
+        }
+        finish(res && res.payload && res.payload.returnValue !== false ? res.payload : null);
+      });
+    }
   }
 
   // LG inputs: the antenna and the four HDMI ports, with the apps LG opens for them.

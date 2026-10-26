@@ -83,6 +83,8 @@ public class NowPlaying extends NotificationListenerService {
         };
         private boolean on;
         volatile String text;
+        /** The title alone (the app's package when it gives none): the line's other parts can change every second. */
+        volatile String title;
 
         Watch(Context c, Runnable changed) {
             context = c;
@@ -126,7 +128,7 @@ public class NowPlaying extends NotificationListenerService {
         }
 
         private void update() {
-            String now = null;
+            String now = null, nowTitle = null;
             for (MediaController mc : controllers) {   // most recent first
                 PlaybackState s = mc.getPlaybackState();
                 int state = s == null ? PlaybackState.STATE_NONE : s.getState();
@@ -134,10 +136,14 @@ public class NowPlaying extends NotificationListenerService {
                 if (state == PlaybackState.STATE_PLAYING || state == PlaybackState.STATE_BUFFERING
                         || state == PlaybackState.STATE_CONNECTING) {
                     now = describe(mc);
+                    MediaMetadata m = mc.getMetadata();
+                    CharSequence t = m == null ? null : m.getDescription().getTitle();
+                    nowTitle = now == null ? null : TextUtils.isEmpty(t) ? mc.getPackageName() : t.toString().trim();
                     break;
                 }
             }
             if (Objects.equals(now, text)) return;
+            title = nowTitle;
             text = now;
             changed.run();
         }

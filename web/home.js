@@ -315,11 +315,11 @@
 
   // MARK: - Focus
 
-  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', ABOUT: 'about'};
-  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0};
+  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', ABOUT: 'about'};
+  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, city: 0};
   var cards = [];
 
-  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.ABOUT; }
+  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY || st.zone === Z.ABOUT; }
 
   function updateFocus() {
     var i, list;
@@ -346,6 +346,7 @@
     focusRows($('shelfedit'), st.edit, st.zone === Z.EDIT);
     focusRows($('langpick'), st.lang, st.zone === Z.LANG);
     if (langHint) langHint.textContent = (st.lang + 1) + ' / ' + languageChoices().length + '  ·  ' + tr('OK picks, Back cancels.');
+    focusRows($('citypick'), st.city, st.zone === Z.CITY);
     setClass(body, 'drawer-open', st.zone === Z.DRAWER);
   }
 
@@ -690,6 +691,8 @@
     setClass($('shelfedit'), 'open', false);
     setClass($('langpick'), 'open', false);
     setClass($('about'), 'open', false);
+    closeCityField();
+    setClass($('citypick'), 'open', false);
     langHint = null;
     st.zone = Z.SHELF;
     updateFocus();
@@ -711,6 +714,8 @@
         step: function () { Prefs.set('saverWatch', !Prefs.saverWatch()); }},
       {label: tr('Weather widget'), toggle: Prefs.weather(),
         step: function () { Prefs.set('weather', !Prefs.weather()); renderPanels(); }},
+      {label: tr('City'), value: Prefs.city() || '—', opens: true, city: true,
+        step: function (d) { if (d >= 0) openCities(); }},
       {label: tr('Forecast'), value: Prefs.forecast() === 'days' ? tr('Next days') : tr('Next hours'),
         step: function (d) { cycle('forecast', ['hours', 'days'], Prefs.forecast(), d); renderPanels(); }},
       {label: tr('Quotes widget'), toggle: Prefs.quotes(),
@@ -820,6 +825,118 @@
     openSettings();
     for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].language) st.row = i;
     updateFocus();
+  }
+
+  // MARK: - City: typed with the TV's keyboard, found by Open-Meteo, as on Android (the weather is for its coordinates)
+
+  var cityFound = [], cityStatus = '', cityTimer = 0, citySeq = 0;
+
+  /** The field to type in, the Search row, then the places found. */
+  function cityRows() { return 2 + cityFound.length; }
+
+  function cityField() { return $('citypick').querySelector('input'); }
+
+  function renderCities() {
+    var box = $('citypick').firstChild, old = cityField(), typed = old ? old.value : '', inField = old && document.activeElement === old;
+    box.innerHTML = '';
+    el('div', 'title', box, tr('City'));
+    var list = el('div', 'list', box), holder = el('div', 'rows', list);
+    list.style.height = Math.min(cityRows(), 7) * 78 + 'px';
+    var field = el('input', '', el('div', 'row field', holder));
+    field.type = 'text';
+    field.value = typed;
+    field.placeholder = tr("Type the city's name");
+    field.setAttribute('aria-label', tr('City'));
+    field.setAttribute('autocomplete', 'off');
+    field.setAttribute('spellcheck', 'false');
+    hover(field.parentNode, Z.CITY, 0);
+    var search = el('div', 'row', holder, tr('Search'));
+    sym('chevron_right', el('span', 'value', search));
+    hover(search, Z.CITY, 1);
+    for (var i = 0; i < cityFound.length; i++) {
+      var row = el('div', 'row', holder, cityFound[i].label);
+      hover(row, Z.CITY, 2 + i);
+    }
+    el('div', 'hint', box, cityStatus || tr('OK picks, Back cancels.'));
+    if (inField) openCityField();   // a message that went away while typing: the keyboard stays
+    updateFocus();
+  }
+
+  function openCities() {
+    setClass($('settings'), 'open', false);
+    st.zone = Z.CITY;
+    st.city = 0;
+    cityFound = [];
+    cityStatus = '';
+    $('citypick').firstChild.innerHTML = '';
+    renderCities();
+    setClass($('citypick'), 'open', true);
+    openCityField();
+  }
+
+  /** Into the field: the TV shows its keyboard. */
+  function openCityField() {
+    var f = cityField();
+    if (!f) return;
+    f.focus();
+    try { f.setSelectionRange(f.value.length, f.value.length); } catch (e) {}
+  }
+
+  function closeCityField() {
+    var f = cityField();
+    if (f && document.activeElement === f) f.blur();
+  }
+
+  function setCityStatus(text) {
+    cityStatus = text;
+    clearTimeout(cityTimer);
+    // Clears only the hint: a new render would rebuild the field and interrupt the TV's keyboard while someone types.
+    if (text && text !== tr('Searching…')) cityTimer = setTimeout(function () {
+      cityStatus = '';
+      var hint = st.zone === Z.CITY && $('citypick').querySelector('.hint');
+      if (hint) hint.textContent = tr('OK picks, Back cancels.');
+    }, 4000);
+    if (st.zone === Z.CITY) renderCities();
+  }
+
+  function searchCity() {
+    var f = cityField(), name = f ? f.value : '';
+    closeCityField();
+    if (!name.trim()) { st.city = 0; openCityField(); updateFocus(); return; }
+    if (cityStatus === tr('Searching…')) return;
+    setCityStatus(tr('Searching…'));
+    var mine = ++citySeq;   // an answer for a sheet already closed (and opened again) is dropped
+    Data.findCity(name, function (err, found) {
+      if (mine !== citySeq) return;
+      if (st.zone !== Z.CITY) { cityStatus = ''; return; }
+      cityFound = found || [];
+      if (cityFound.length) st.city = 2;   // on the first place found
+      setCityStatus(err ? trf("Couldn't search now: {error}", {error: err.message}) : cityFound.length ? '' : tr('No city with that name.'));
+    });
+  }
+
+  /** OK on a place: the weather moves there. Back (pick false): nothing changes. Either way, back on the City row. */
+  function closeCities(pick) {
+    var place = pick && cityFound[st.city - 2];
+    closeCityField();
+    setClass($('citypick'), 'open', false);
+    cityFound = [];
+    citySeq++;
+    clearTimeout(cityTimer);
+    cityStatus = '';
+    if (place) {
+      Prefs.setCity(place.city, place.lat, place.lon);
+      Data.cityChanged();
+    }
+    openSettings();
+    for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].city) st.row = i;
+    updateFocus();
+  }
+
+  function activateCity() {
+    if (st.city === 0) openCityField();
+    else if (st.city === 1) searchCity();
+    else closeCities(true);
   }
 
   // MARK: - About this TV: what to quote when reporting a problem, without LG's or Samsung's slow menus
@@ -973,6 +1090,9 @@
       case Z.LANG:
         closeLanguages(true);
         return;
+      case Z.CITY:
+        activateCity();
+        return;
       case Z.ABOUT:
         closeAbout();
         return;
@@ -1032,6 +1152,9 @@
       case Z.LANG:
         if (dy) st.lang = Math.max(0, Math.min(languageChoices().length - 1, st.lang + dy));
         break;
+      case Z.CITY:
+        if (dy) st.city = Math.max(0, Math.min(cityRows() - 1, st.city + dy));
+        break;
     }
     updateFocus();
   }
@@ -1045,6 +1168,7 @@
       return;
     }
     if (st.zone === Z.LANG) { closeLanguages(false); return; }
+    if (st.zone === Z.CITY) { closeCities(false); return; }
     if (st.zone === Z.ABOUT) { closeAbout(); return; }
     if (sheetOpen()) { closeSheets(); return; }
     if (st.zone === Z.DRAWER) { closeDrawer(); return; }
@@ -1055,7 +1179,7 @@
   /** The pointer focuses what it's over (the Magic Remote, or a mouse when previewing). */
   function hover(node, zone, index) {
     node.onmouseover = function () {
-      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG || zone === Z.ABOUT))) return;
+      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG || zone === Z.CITY || zone === Z.ABOUT))) return;
       if (zone === Z.DRAWER && st.zone !== Z.DRAWER) return;
       if (zone !== Z.DRAWER && st.zone === Z.DRAWER && zone !== Z.SHELF) return;
       if (zone === Z.SHELF && st.zone === Z.DRAWER) closeDrawer();
@@ -1068,6 +1192,7 @@
       else if (zone === Z.SETTINGS) st.row = index;
       else if (zone === Z.EDIT) st.edit = index;
       else if (zone === Z.LANG) st.lang = index;
+      else if (zone === Z.CITY) st.city = index;
       updateFocus();
     };
     node.onclick = function () { node.onmouseover(); activate(); };
@@ -1170,6 +1295,7 @@
   document.addEventListener('keydown', function (e) {
     var k = e.keyCode;
     if (poke(k === TV.keys.ok)) { e.preventDefault(); return; }   // the first press only wakes the screen (or OK watches)
+    if (typing(k)) return;
     if (k === TV.keys.left) move(-1, 0);
     else if (k === TV.keys.right) move(1, 0);
     else if (k === TV.keys.up) move(0, -1);
@@ -1180,6 +1306,20 @@
     e.preventDefault();
   });
   document.addEventListener('mousemove', function () { poke(); });
+
+  /**
+   * In the city's field, the keys type (← → move in the text, Delete erases). OK or the keyboard's Done searches; Back,
+   * its Cancel or ↑ ↓ leave the field. Samsung's keyboard sends Done as 65376 and Cancel as 65385. True: handled here.
+   */
+  function typing(k) {
+    var f = cityField();
+    if (st.zone !== Z.CITY || !f || document.activeElement !== f) return false;
+    if (k === TV.keys.ok || k === 65376) searchCity();
+    else if (k === TV.keys.back || k === 27 || k === 65385) { closeCityField(); updateFocus(); }
+    else if (k === TV.keys.up || k === TV.keys.down) { closeCityField(); move(0, k === TV.keys.up ? -1 : 1); }
+    else return true;   // typed into the field
+    return true;
+  }
 
   // MARK: - Start
 
@@ -1224,6 +1364,7 @@
     st.shelf = 0;
     if (st.tab !== 0) { st.tab = 0; renderCards(); }
     updateFocus();
+    restInDrawer();   // drawer_first: out again at once, not only after the TV lists its apps
   }
 
   Data.onChange(function () {
@@ -1233,11 +1374,19 @@
     checkNight();
   });
 
+  /** drawer_first: the home screen rests with the drawer open (shelf in the middle, inputs and weather below). */
+  function restInDrawer() {
+    if (!CONFIG.drawerFirst || !drawerItems.length || st.zone !== Z.SHELF) return;
+    st.zone = Z.DRAWER;
+    st.drawer = 0;
+    updateFocus();
+  }
+
   function reopened() {
     // LG: with handlesRelaunch the app has to come to the front itself, or opening it again while it runs shows nothing.
     if (window.PalmSystem && window.PalmSystem.activate) window.PalmSystem.activate();
     reset();
-    loadApps(function () { renderShelf(); renderDrawer(); Data.refresh(); });
+    loadApps(function () { renderShelf(); renderDrawer(); restInDrawer(); Data.refresh(); });
   }
 
   window.addEventListener('resize', fit);
@@ -1258,6 +1407,7 @@
   tickClock();
   loadApps(function () {
     renderAll();
+    restInDrawer();
     Data.refresh();
   });
   setInterval(function () {

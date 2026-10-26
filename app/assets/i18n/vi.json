@@ -99,6 +99,7 @@
  "Not installed": "Chưa cài đặt",
  "Nothing": "Không có",
  "Now Playing widget": "Tiện ích đang phát",
+ "Now playing: {what}": "Đang phát: {what}",
  "OK adds or removes (up to {n}). ← → change the order.": "OK để thêm hoặc bỏ (tối đa {n}). ← → để đổi thứ tự.",
  "OK adds or removes a button. ← → change the order.": "OK để thêm hoặc bỏ nút. ← → để đổi thứ tự.",
  "OK adds or removes an app. ← → change the order.": "OK để thêm hoặc bỏ ứng dụng. ← → để đổi thứ tự.",

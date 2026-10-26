@@ -369,12 +369,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         activity = a;
         data = HomeData.get(a);
         recs = Recs.get(a);
-        playing = new NowPlaying.Watch(a, () -> {
-            fitPlaying();
-            heroDirty = true;
-            wake();
-            bounceBars();
-        });
+        playing = new NowPlaying.Watch(a, this::onPlaying);
         click = new Click(a);
         shelfVisible = HomeApps.shelfVisible(a);
         ui = a.getSharedPreferences("home-ui", Context.MODE_PRIVATE);
@@ -688,7 +683,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         border.setStrokeWidth(2 * k);
         rim.setStyle(Paint.Style.STROKE);
         rim.setStrokeWidth(2.5f * k);
-        fitPlaying();
+        onPlaying();   // the line fits the new size; a title that came before the first layout bounces and is said now
     }
 
     // MARK: - Frames: 60 per second while something moves; nothing is redrawn when still
@@ -699,6 +694,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lastNanos = frameTimeNanos;
         long up = SystemClock.uptimeMillis();
 
+        settleWhileSliding();
         boolean tilesMoving = step(tileFocus, dt);
         if (reorderAnim) tilesMoving |= stepReorder(dt, up);
         boolean statusMoving = step(statusFocus, dt);
@@ -781,6 +777,32 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float scale = 1.04f - 0.04f * s;
         sheetLayer.setScaleX(scale);
         sheetLayer.setScaleY(scale);
+    }
+
+    /**
+     * While the drawer slides, the focus in the drawer, the hero and the capsule jumps instead of animating: the shelf's
+     * focus alone is cheap over the sliding sky (10 ms a frame on a Realtek TCL), but a redraw of the drawer's cards or
+     * of the hero on top of it took 35 to 45 ms of GPU there (most frames dropped when a key came during the slide).
+     */
+    private void settleWhileSliding() {
+        if (drawer.settled()) return;
+        if (settle(drawerFocus)) drawerDirty = true;
+        if (settle(cardFocus) | settle(topFocus)) heroDirty = statusDirty = true;
+        if (settle(statusFocus)) statusDirty = true;
+        if (!heroFocus.settled()) {
+            heroFocus.snap(heroFocus.target);
+            heroDirty = true;
+        }
+    }
+
+    private static boolean settle(Spring[] springs) {
+        boolean moved = false;
+        for (Spring s : springs) {
+            if (s.settled()) continue;
+            s.snap(s.target);
+            moved = true;
+        }
+        return moved;
     }
 
     private static void show(View v, float alpha, float translationY) {
@@ -1289,10 +1311,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private String playingTab, playingClock;
     private float playingTabWidth, playingTabCap, playingClockCap;
     private final RectF barRect = new RectF();
-    // The bars bounce for a few seconds when the screen shows or the title changes, then stand still: bouncing all
-    // along redrew the top layer 10 times a second (~8% of a core on a Skyworth's Cortex-A55), the still screen nothing.
+    // The bars bounce for a few seconds when the title changes, then stand still: bouncing all along redrew the top
+    // layer 10 times a second (~8% of a core on a Skyworth's Cortex-A55), the still screen nothing.
     private static final long BAR_FRAME_MS = 100, BARS_BOUNCE_MS = 3000;
     private long barsUntil;
+    private String shownTitle;   // kept while the screen is hidden: showing it again with the same title is no change
     private final Runnable bars = new Runnable() {
         @Override public void run() {
             if (!running || playingTab == null) return;
@@ -1307,6 +1330,31 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (playingTab == null) return;
         barsUntil = SystemClock.uptimeMillis() + BARS_BOUNCE_MS;
         handler.post(bars);
+    }
+
+    /** What's playing changed (or stopped). */
+    private void onPlaying() {
+        fitPlaying();
+        heroDirty = true;
+        wake();
+        // Only a new title bounces the bars and is said to TalkBack: not a subtitle some players rewrite every second (the
+        // time), and not the same title again when the screen shows.
+        String title = playing.title, now = playing.text;
+        if (title != null && now != null && running && playingTab != null && !title.equals(shownTitle)) {
+            shownTitle = title;
+            bounceBars();
+            if (readerOn()) announceForAccessibility(Ui.trf("Now playing: {what}", "what", now.replace(" · ", ", ")));
+        }
+    }
+
+    /**
+     * A screen reader is on (TalkBack, or another service that speaks): only then is a new title announced. Other
+     * accessibility services (a button mapper, a sleep timer) would get the announcement too, for nothing.
+     */
+    private boolean readerOn() {
+        AccessibilityManager am = getContext().getSystemService(AccessibilityManager.class);
+        return am != null && am.isEnabled()
+                && !am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_SPOKEN).isEmpty();
     }
 
     private void fitPlaying() {

@@ -162,8 +162,14 @@ final class HomeMode {
         "com.onn.bluetoothconnect", "com.onn.btpairoverlay", "com.onn.updatenotification", "com.gretzky.GlobalKey",
         "com.gretzky.hwinfo", "com.droidlogic", "com.droidlogic.tv.settings", "com.droidlogic.mictoggle",
         "com.droidlogic.launcher.provider", "com.droidlogic.android.tv.connecteddevices",
-        // HY300 projectors (Hotack, Allwinner H713): keystone and projection settings, the HDMI player, Miracast receiver
-        "com.htc.htcsettings", "com.softwinner.awlivetv", "com.softwinner.miracastReceiver",
+        // Wanbo projectors (T2 Ultra: a Skyworth board, Amlogic, Android TV 11): remote pairing and reconnect, Amlogic
+        // overlay, settings and customization, projector service, Skyworth and OEM services, factory and QA tests
+        "com.droidlogic.ble", "com.droidlogic.overlay", "com.mft.rcupair", "com.mtf.blereconnect", "com.mtf.customization",
+        "com.mtf.tvsettingadapt", "com.sdt.projector.observer", "com.skyworth.superservice", "com.skyworth.smallclient",
+        "com.oemservice", "com.oem.qa", "com.mft.producttest", "android.autoinstalls.config.AMLSTBAndroid.device",
+        // HY300 projectors (Hotack, Allwinner H713; Amlogic txhd2): keystone and projection settings, the HDMI player,
+        // Miracast receiver
+        "com.htc.htcsettings", "com.softwinner.awlivetv", "com.softwinner.miracastReceiver", "com.softwinner.tcorrection",
         // Amazon Fire TV: launcher, settings, setup, remote pairing, inputs, live TV, channel scan, OTA updates, Appstore
         // (every com.amazon.* is refused by mayTurnOff too)
         "com.amazon.tv.launcher", "com.amazon.firehomestarter", "com.amazon.tv.settings.v2", "com.amazon.tv.settings.core",
@@ -202,12 +208,15 @@ final class HomeMode {
         Set<String> keep = new HashSet<>();
         if (pkgs.isEmpty()) return keep;
         // Only the package's own requested permissions: a shared user's would match by mistake. A line per package keeps
-        // the connection's read timeout from running out on a slow TV.
+        // the connection's read timeout from running out on a slow TV. A dump that doesn't name the package counts as
+        // "couldn't check": after a hang Android turns every dumpsys off ("Service dumps disabled due to hung system
+        // process.", #246), and an empty answer must not read as "nothing needed".
         String out = adb.shell("for p in " + String.join(" ", sorted(pkgs)) + "; do d=\"$(dumpsys package $p)\"; "
-                + "if printf '%s\\n' \"$d\" | sed -n -r '/requested permissions:/,/(install|runtime) permissions:|User [0-9]+:/p'"
+                + "if ! printf '%s\\n' \"$d\" | grep -q -F \"Package [$p]\"; then echo \"unknown $p\"; "
+                + "elif printf '%s\\n' \"$d\" | sed -n -r '/requested permissions:/,/(install|runtime) permissions:|User [0-9]+:/p'"
                 + " | grep -q TV_INPUT_HARDWARE || printf '%s\\n' \"$d\" | grep -q -E 'TV_INPUT_BUTTON|CONNECT_INPUT|AddAccessory';"
                 + " then echo \"keep $p\"; else echo \"- $p\"; fi; done; echo checked");
-        if (!out.contains("checked")) return null;
+        if (!out.contains("checked") || out.contains("unknown ")) return null;
         Matcher m = Pattern.compile("keep ([\\w.]+)").matcher(out);
         while (m.find()) keep.add(m.group(1));
         if (!keep.isEmpty()) AppLog.w("kept on, the TV's inputs or remote need them: " + String.join(", ", sorted(keep)));
@@ -396,9 +405,9 @@ final class HomeMode {
                         + "show there: Claude Code can remove them from your computer), then try once more."));
             }
             if (metrics(latest, ORIGINAL) == null && !home.isEmpty()) {
+                putMetric(c, ORIGINAL, "at", System.currentTimeMillis());   // first: a retry after TCL's TGuard killed the job skips it (#277)
                 busy(c, Ui.tr("Measuring the original home screen…"));
-                measureHomeTime(c, adb, ORIGINAL);
-                measureMemory(c, adb, ORIGINAL);
+                measure(c, adb, ORIGINAL, true);
             }
             busy(c, Ui.tr("Switching the home screen and screensaver…"));
             Watchdog.clear(c);
@@ -469,9 +478,9 @@ final class HomeMode {
             }
             notice(c, Ui.trf("Free My TV is on: new home screen and screensaver, {n} apps turned off.", "n", disabled.size()));
             busy(c, Ui.tr("Measuring Free My TV…"));
-            measureHomeTime(c, adb, FREE);
+            measure(c, adb, FREE, false);
             done(c, null);
-            adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
+            homeAfter(adb);
             ModeJob.schedule(c, ModeJob.MEMORY, FREE, 120_000);
         } catch (Exception e) {
             done(c, Ui.trf("Couldn't turn on Free My TV: {error}", "error", e.getMessage()));
@@ -542,9 +551,9 @@ final class HomeMode {
                 notice(c, Ui.trf("Original mode, but I couldn't turn back on: {list}.", "list", String.join(", ", problems)));
             }
             busy(c, Ui.tr("Measuring the original home screen…"));
-            measureHomeTime(c, adb, ORIGINAL);
+            measure(c, adb, ORIGINAL, false);
             done(c, null);
-            adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
+            homeAfter(adb);
             ModeJob.schedule(c, ModeJob.MEMORY, ORIGINAL, 120_000);
         } catch (Exception e) {
             done(c, Ui.trf("Couldn't go back to the original: {error}", "error", e.getMessage()));
@@ -952,6 +961,17 @@ final class HomeMode {
 
     // MARK: - Measurements (without opening apps: memory and the home button)
 
+    /** A failed measurement only logs: the switch itself went through (or is about to), and a TV may cut it short
+     *  (a TCL's TGuard kills the job once the original launcher is in front, and the error read as a failed switch, #277). */
+    private static void measure(Context c, Adb adb, String mode, boolean memory) {
+        try {
+            measureHomeTime(c, adb, mode);
+            if (memory) measureMemory(c, adb, mode);
+        } catch (Exception e) {
+            AppLog.w("measurement of " + mode + " failed: " + e.getMessage());
+        }
+    }
+
     private static void measureHomeTime(Context c, Adb adb, String mode) throws IOException, JSONException {
         List<Integer> samples = new ArrayList<>();
         Pattern total = Pattern.compile("TotalTime: (\\d+)");
@@ -993,6 +1013,15 @@ final class HomeMode {
             if (m.find()) pss += Long.parseLong(m.group(1));
         }
         if (pss > 0) putMetric(c, mode, "homePssMB", pss / 1024);
+    }
+
+    /** The home screen after a finished switch: if ADB went away meanwhile, the switch still reads as done. */
+    private static void homeAfter(Adb adb) {
+        try {
+            adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
+        } catch (IOException e) {
+            AppLog.w("home after the switch: " + e.getMessage());
+        }
     }
 
     private static void putMetric(Context c, String mode, String key, long value) throws JSONException {

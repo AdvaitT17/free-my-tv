@@ -15,7 +15,7 @@ import translate  # noqa: E402  (the catalogues and the keys the web app uses)
 
 GENERIC = {'tmdbKey': '', 'tmdbRegion': '', 'latitude': '', 'longitude': '', 'city': '', 'language': 'auto',
            'currency': '', 'temperature': 'auto', 'theme': 'auto', 'showCrypto': True, 'hideAnimation': False, 'hideApps': [],
-           'shelfApps': []}
+           'shelfApps': [], 'drawerFirst': False}
 
 
 def config_from_args(args):
@@ -33,13 +33,17 @@ def read_config(path):
         shutil.copy(os.path.join(ROOT, 'config.example.properties'), path)
         print('Created config.properties: add your TMDB key and your city there (optional), then build again.')
     values = {}
-    with open(path, encoding='utf-8') as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            key, value = line.split('=', 1)
-            values[key.strip()] = value.strip().strip('"')
+    try:
+        with open(path, encoding='utf-8-sig') as f:
+            lines = f.readlines()
+    except UnicodeDecodeError:   # Notepad's "Unicode" is UTF-16
+        sys.exit('config.properties is saved as UTF-16 (Notepad\'s "Unicode"). Save it as UTF-8 and build again.')
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith('#') or '=' not in line:
+            continue
+        key, value = line.split('=', 1)
+        values[key.strip()] = value.strip().strip('"')
 
     def number(key, default):
         v = values.get(key, '') or default
@@ -61,6 +65,7 @@ def read_config(path):
         'hideAnimation': values.get('hide_animation', 'false').lower() == 'true',
         'hideApps': [s.strip() for s in values.get('hide_apps', '').split(',') if s.strip()],
         'shelfApps': [s.strip() for s in values.get('shelf_apps', '').split(',') if s.strip()],
+        'drawerFirst': values.get('drawer_first', 'false').lower() == 'true',
     }
 
 

@@ -99,6 +99,7 @@
  "Not installed": "未安装",
  "Nothing": "无",
  "Now Playing widget": "正在播放小组件",
+ "Now playing: {what}": "正在播放：{what}",
  "OK adds or removes (up to {n}). ← → change the order.": "按 OK 添加或移除（最多 {n} 个）。← → 调整顺序。",
  "OK adds or removes a button. ← → change the order.": "按 OK 添加或移除按钮。← → 调整顺序。",
  "OK adds or removes an app. ← → change the order.": "按 OK 添加或移除应用。← → 调整顺序。",

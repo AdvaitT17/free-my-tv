@@ -99,6 +99,7 @@
  "Not installed": "Не встановлено",
  "Nothing": "Нічого",
  "Now Playing widget": "Віджет «Зараз грає»",
+ "Now playing: {what}": "Зараз грає: {what}",
  "OK adds or removes (up to {n}). ← → change the order.": "OK додає або прибирає (до {n}). ← → змінюють порядок.",
  "OK adds or removes a button. ← → change the order.": "OK додає або прибирає кнопку. ← → змінюють порядок.",
  "OK adds or removes an app. ← → change the order.": "OK додає або прибирає застосунок. ← → змінюють порядок.",

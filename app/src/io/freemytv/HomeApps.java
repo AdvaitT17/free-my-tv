@@ -156,6 +156,13 @@ final class HomeApps {
             "com.disney.starplus",                  // Star+ (merged into Disney+)
             "com.tcl.exhibit"));                    // TCL: T-Exhibition
 
+    /**
+     * System apps with only a phone launcher entry that still belong in "All Apps". Fire TV's Appstore has no TV banner
+     * (no LEANBACK_LAUNCHER entry), so without this a Fire TV had no way to its app store from this home screen.
+     */
+    private static final Set<String> SYSTEM_SHOWN = new HashSet<>(java.util.Arrays.asList(
+            "com.amazon.venezia"));                 // Amazon Appstore
+
     private static final Map<String, Bitmap> TILES = new HashMap<>();   // key → ready card
     private static final Map<String, Bitmap> LOGOS = new HashMap<>();   // key → colored logo with no background
 
@@ -312,7 +319,12 @@ final class HomeApps {
         items.add(shortcut(ANDROID_SETTINGS, "tv-settings", Ui.tr("TV Settings"), "tv_settings"));
         // HY300 projectors (Hotack, Allwinner H713): keystone and focus live in the maker's settings app, and the
         // stock home screen was the only way to its Miracast receiver. Each shows only where the TV has it.
-        device(c, items, "keystone", Ui.tr("Keystone"), "keystone", new Intent("action.htcsettings.prjsettings"));
+        // The Amlogic ones (txhd2) carry the HTC app too, but its keystone crashes there (SurfaceFlinger refuses code
+        // 1050): their own is com.softwinner.tcorrection, so that one wins where it's installed.
+        Intent tcorrection = new Intent().setComponent(new ComponentName("com.softwinner.tcorrection",
+                "com.softwinner.tcorrection.projection.ProjectionSettingActivity"));
+        device(c, items, "keystone", Ui.tr("Keystone"), "keystone",
+                c.getPackageManager().resolveActivity(tcorrection, 0) != null ? tcorrection : new Intent("action.htcsettings.prjsettings"));
         device(c, items, "mirroring", Ui.tr("Screen Mirroring"), "cast",
                 new Intent().setComponent(new ComponentName("com.softwinner.miracastReceiver", "com.softwinner.miracastReceiver.Miracast")));
         return items;
@@ -657,7 +669,8 @@ final class HomeApps {
                 if (info.getServiceInfo() != null && info.getServiceInfo().applicationInfo != null
                         && (info.getServiceInfo().applicationInfo.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) {
                     // Several hardware tuners (MediaTek: Tuner, Cable, Analog): digital antenna first, analog last.
-                    // Haier H32S80EFX lists AnalogInputService/HW1 first, which opens on no channels in DVB-T2 countries.
+                    // Haier H32S80EFX lists AnalogInputService/HW1 first, which opens on no channels in DVB-T2 countries;
+                    // a Cecotec lists two TunerInputService ones, HW1 (analog) first.
                     if (info.getId().contains("/HW") && (hardware == null || tunerRank(info.getId()) < tunerRank(hardware))) {
                         hardware = info.getId();
                     }
@@ -670,9 +683,18 @@ final class HomeApps {
         return hardware != null ? hardware : system != null ? system : fallback;
     }
 
+    /**
+     * Live TV's tuner: the digital antenna first, then cable, then analog, by the input's name (Haier H32S80EFX's
+     * Tuner/Cable/AnalogInputService, #254); between inputs of one name, the lowest hardware number (a Cecotec on a
+     * Vestel base: TunerInputService/HW0 is the antenna and HW1 analog, listed first, #312). "atv" only in the
+     * service's class name (Amlogic's ATVInputService), so a package with it in its name doesn't count as analog.
+     */
     private static int tunerRank(String id) {
-        String s = id.toLowerCase(Locale.ROOT);
-        return s.contains("analog") ? 2 : s.contains("cable") ? 1 : 0;
+        String s = id.toLowerCase(Locale.ROOT), cls = s.substring(Math.max(0, s.indexOf('/')));   // the service's class
+        int kind = s.contains("analog") || cls.contains(".atv") ? 2 : s.contains("cable") ? 1 : 0;
+        Matcher m = HW.matcher(id);
+        int hw = m.find() && m.group(1).length() <= 3 ? Integer.parseInt(m.group(1)) : 999;
+        return kind * 1000 + hw;
     }
 
     static List<String[]> launchable(Context c) {
@@ -687,7 +709,8 @@ final class HomeApps {
         Intent phone = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         for (ResolveInfo ri : pm.queryIntentActivities(phone, 0)) {
             String pkg = ri.activityInfo.packageName;
-            if ((ri.activityInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0 || !seen.add(pkg)) continue;
+            boolean system = (ri.activityInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+            if ((system && !SYSTEM_SHOWN.contains(pkg)) || !seen.add(pkg)) continue;
             out.add(new String[] {pkg, String.valueOf(ri.loadLabel(pm))});
         }
         return out;

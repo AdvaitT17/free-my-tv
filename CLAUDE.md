@@ -61,6 +61,15 @@ before you do it, and let them do the taps on the TV.
    TCL's `TclAppBoot` blocks background jobs by default, so the switch (and the watchdog) never run. The log shows
    `forbid bind service ... ModeJob`. Some TCL firmware has neither (a 2024 MediaTek Google TV, Android 14, has no
    `TclAppBoot`): both names answer `Unknown operation string`, and nothing needs allowing.
+   Some TCL firmware (a "Smart TV Pro", Realtek RTD2880, Android 11, build `RP1A200622.001`; the same TV as #264) also
+   has a second, separate background killer, `TGuard` (`com.tcl.guard`), which kills the app's processes about a second
+   after any other app comes to the front. The switch's benchmark opens the original home screen a few times (that's
+   the launcher flashing by during "Measuring…"), so TGuard can kill `ModeJob` there (log: `TGuardMemoryManagerKillHandler
+   ... tguard-kill`, then `Scheduling restart of crashed service io.freemytv/.ModeJob`). The JobScheduler runs the job
+   again by itself within a minute or two, and a benchmark that fails only logs now (it used to read as "Couldn't turn on
+   Free My TV: Read timed out", #277). Tell them: if the settings screen closes on the stock launcher, wait a minute or two, then press
+   Home; Free My TV opening confirms the switch. No `adb`/`appops` setting turns TGuard off (its content providers aren't
+   exported to the shell user).
    Chromecast with Google TV (Android 14) refuses port 5555 even with USB debugging on: have them turn on *Wireless
    debugging*, pair with `adb pair <address:port> <code>` (the code is on the TV), then run `adb tcpip 5555` over that
    connection. It closes again at every restart (Wireless debugging turns itself off; `persist.adb.tcp.port` is
@@ -115,7 +124,7 @@ stays, and Free My TV opens with a long press of a number key.
 
 ## Installing it on a Samsung TV (Tizen)
 
-On Samsung it's an app too (2016 and newer, Tizen 2.4+; TizenBrew needs 2017 and newer), installed through Samsung's
+On Samsung it's an app too (Tizen 2.3+: 2015 and newer, one 2015 TV reported, #317; TizenBrew needs 2017 and newer), installed through Samsung's
 Developer Mode; Samsung's home screen stays. Two ways:
 
 - **The release, no tools:** TizenBrew Installer (github.com/reisxd/TizenBrewInstaller) installs the latest GitHub
@@ -137,7 +146,7 @@ Developer Mode; Samsung's home screen stays. Two ways:
    JDK 17's .jdk folder>` (Homebrew: `/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk`). That `tizen` signs natively.
 4. **Certificate, once:** 2023+ TVs (Tizen 7+) need a Samsung certificate, made with their Samsung account for this TV
    (its DUID): the plugin's Samsung profile opens the browser for them to sign in, or Tizen Studio's Certificate
-   Manager does it. 2016-2022 TVs take a Tizen certificate (`tizen certificate`, then `tizen security-profiles add`
+   Manager does it. 2015-2022 TVs take a Tizen certificate (`tizen certificate`, then `tizen security-profiles add`
    and `tizen cli-config "profiles.path=<home>/tizen-studio-data/profile/profiles.xml"`; on macOS the passwords go to
    the login Keychain). Certificate passwords are theirs: they type them in their own terminal, never in the chat.
 5. **Settings:** the same `config.properties`; the TMDB key rules above apply.
@@ -145,7 +154,9 @@ Developer Mode; Samsung's home screen stays. Two ways:
    signed with "<profile>")`.
 7. **Install:** `python3 tizen/install.py <IP>`: it pushes the app over SDB (port 26101), installs it with the TV's
    `0 vd_appinstall` and opens it with `0 was_execute` (tested on 2016 Tizen 2.4, 2017 Tizen 3.0, 2019 Tizen 5.0 and
-   2024 Tizen 9.0 TVs; Tizen 2.4 has no `sdk_toolpath`, so it pushes to `/opt/usr/apps/tmp`); it only reports success
+   2024 Tizen 9.0 TVs, and reported on a 2015 Tizen 2.3 one; Tizen 2.x has no `sdk_toolpath`, so it pushes to
+   `/opt/usr/apps/tmp`; on 2015 firmware `developerMode` on port 8001 can read 0 while SDB works, and SDB resets the
+   connection when the TV's Host PC IP isn't this computer's current one); it only reports success
    when the TV says `install completed` (`cmd_ret:0` comes after failures too). `--uninstall` removes
    it; some TVs' sdbd doesn't answer that, and then it's removed on the TV (Apps, Settings, Free My TV, Delete).
    With Samsung's tools instead: `sdb connect <IP>`, `tizen install -n FreeMyTV-tizen.wgt -t <serial from sdb
@@ -235,6 +246,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   and `_height`, `ro.config.low_ram`). There every pixel and every MB counts: `Backdrop` builds its images at the UI's
   size (and the picks use TMDB's w1280), and the shelf logos have a copy at the resting size and one at the focused
   size, so both draw pixel for pixel.
+- TMDB's API is reached at `api.tmdb.org`, TMDB's own mirror of `api.themoviedb.org` on the images' domain
+  (`image.tmdb.org`): some ISPs block the other name (Jio in India, #327).
 - `HomeMode` runs every switch as a background job (`ModeJob`) in the main process; the UI is in the `:home`
   process. The sleep timer's overlay (`SleepOverlay`) runs alone in `:sleep`, so its foreground service doesn't keep
   the home screen in memory under the app in front; the remote's key service lives in `:keys` (below).
@@ -316,7 +329,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   quick toggles and a revert can't cross), `verifyNow` does the same after a boot or an update, and a screen that finds
   it on but not allowed asks once.
   It unbinds itself as soon as it connects (the permission is all it's for), and the home screen and the screensaver
-  watch the sessions only while they show. The line is cut to fit when the title changes, never while drawing.
+  watch the sessions only while they show. The line is cut to fit when the title changes, never while drawing; the
+  home screen's bars bounce again only for a new title (`Watch.title`), and TalkBack announces it then.
 - HY300 projectors (Hotack, Allwinner H713, Android 11 tested; the build claims to be an `askey`/`adt3`): the stock
   home screen and screensaver are `com.htc.htclauncherhighenglishd08`, which also carries an ad SDK (`com.zeasn.ad`).
   Keystone, zoom and projection mode live in `com.htc.htcsettings` (`action.htcsettings.prjsettings`), and the Miracast
@@ -329,13 +343,17 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   home: it opens the package in `persist.sys.home.selectpkg`, else the HTC one, and with that off and the property
   empty, a black screen. Their adb shell runs as root, so the switch sets the property (`HomeMode.JM_HOME`) and only
   then turns the HTC home off; Original and the watchdog put both back. Wireless debugging's port changes and turns
-  itself off, but adb also listens on 5555 there.
+  itself off, but adb also listens on 5555 there. They carry `com.htc.htcsettings` too, but any change in its keystone
+  or zoom crashes it (`SecurityException`: SurfaceFlinger doesn't know the Allwinner request code 1050): their own is
+  `com.softwinner.tcorrection/.projection.ProjectionSettingActivity`, which the Keystone shortcut opens where it's
+  installed.
 - Xiaomi's Chinese firmware (MIUI TV; Redmi `MiTV-MFTP0`, Android 9 tested) has no passthrough handler either: its own
   `com.xiaomi.mitv.tvplayer/.ExternalSourceActivity` (action `com.xiaomi.mitv.tvplayer.EXTSRC_PLAY`) opens a port from
   an `input` extra (HDMI 1 to 3 are 23 to 25; there is no number for a fourth), so `inputs` keeps HDMI 1 to 3 there.
 - MediaTek TVs that list one hardware tuner input per mode (Haier H32S80EFX, Google TV 14: `AnalogInputService/HW1`,
-  `CableInputService/HW0`, `TunerInputService/HW0`, in no fixed order): Live TV tunes the digital antenna's
-  (`HomeApps.tunerRank`), then cable's, then analog's.
+  `CableInputService/HW0`, `TunerInputService/HW0`, in no fixed order), or two of one name (a Cecotec on a Vestel base,
+  Android TV 14: `TunerInputService/HW0` antenna, `/HW1` analog, HW1 listed first, #312): Live TV tunes the digital
+  antenna's (`HomeApps.tunerRank`: by name, then the lowest HW number), then cable's, then analog's.
 - TVs with Fire OS built in (Xiaomi Fire TV, MediaTek, Fire OS 8 tested): the passthrough request lands on Vewd's
   HbbTV player (`com.vewd.core.tvapp`) or on Amazon's Live TV, and both play the antenna's last channel (RaiPlay's)
   instead of the port. Amazon's input player wants `com.amazon.tv.permission.TUNE_INPUT` and its home screen's switch
@@ -349,11 +367,14 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   (webOS 3 and 4, Tizen 3) run a Chromium from 2015 to 2017 (`tools/check.sh` greps for all of these); only transform
   and opacity animate. Tizen 2.4 (2016) runs WebKit 538: no Intl (`fmt` in data.js rounds by hand), SVGs need a width
   and height, and `tv.js` adds a `lite` class there that turns off shadows and transitions, which its GPU can't keep up
-  with; it also can't open the TV's settings (`TV.canOpenSettings`). `web/tv.js` is the
+  with (TVs under 2 GB that draw the page at twice its size get it too, `navigator.deviceMemory` and `devicePixelRatio`: an LG on webOS TV Lite went from 25 to 60 fps); it also
+  can't open the TV's settings (`TV.canOpenSettings`). `web/tv.js` is the
   TV's side: on LG, Luna (`listLaunchPoints`, `launch`, the inputs; where webOS 6 and newer deny `listLaunchPoints`
   to Developer Mode apps, the list comes from the TV's remote control API on `ws://127.0.0.1:3000` once the TV has
-  allowed it (it asks once; a "no" isn't asked again), and until then from `getAppLoadStatus` over a list of known
-  app ids, which shows the logo bundled in `web/icons/` where there is one, otherwise the name on the brand's color);
+  allowed it (it asks once; a "no" isn't asked again; firmware that gives the page its own origin,
+  `file://io.freemytv-webos`, gets 1008 "invalid origin" there, and the call goes through `webos/service`, a JS
+  service in the package whose handshake says `file://`; webOS 22 with 2026 firmware tested), and until then from
+  `getAppLoadStatus` over a list of known app ids, which shows the logo bundled in `web/icons/` where there is one, otherwise the name on the brand's color);
   on Samsung, `tizen.application` (`getAppsInfo`, `launch`), the `VIDEOSOURCE` property and
   `tizen.tvwindow.setSource` for the inputs, then Samsung's viewer (`org.tizen.tv-viewer`) to show them. Samsung's own
   data is unreliable: on Tizen 3 no app's `iconPath` loads (on Tizen 4 and 5, YouTube's and Prime Video's are a

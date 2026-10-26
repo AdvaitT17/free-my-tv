@@ -56,6 +56,11 @@ var Prefs = (function () {
     shelf: function () { return pick('shelf', null); },
     /** The shelf_apps of the build that last set the shelf, so a new one wins once over the TV's choice. */
     shelfConfig: function () { return pick('shelfConfig', ''); },
+    /** The weather's city, picked on the TV (Home Settings → City), or config.properties' (or the time zone's). */
+    city: function () { return pick('city', Place.city); },
+    latitude: function () { return pick('latitude', Place.lat); },
+    longitude: function () { return pick('longitude', Place.lon); },
+    setCity: function (name, lat, lon) { v.city = name; v.latitude = lat; v.longitude = lon; save(); this.version++; },
     set: function (name, value) { v[name] = value; save(); this.version++; },
     setCoin: function (i, on) {
       var c = (pick('coins', null) || [true, true, true, true]).slice();
@@ -95,7 +100,7 @@ var Data = (function () {
 
   // MARK: - Weather
 
-  var PLACE = Place.lat + ',' + Place.lon;
+  function place() { return Prefs.latitude() + ',' + Prefs.longitude(); }
   // Both forecasts in one answer, the next 48 hours and today plus 5 days: Home Settings → Forecast switches without
   // asking again, and offline too.
   var QUERY = '&current=temperature_2m,weather_code,is_day&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset,weather_code'
@@ -104,7 +109,7 @@ var Data = (function () {
   (function () {
     var w = stored('weather');
     // Fetched with another query (an older version): shown, and fetched again now.
-    if (w && w.place === PLACE) { weather = parseWeather(w.body); weatherAt = w.query === QUERY ? w.at : 0; }
+    if (w && w.place === place()) { weather = parseWeather(w.body); weatherAt = w.query === QUERY ? w.at : 0; }
   })();
 
   /** "2026-10-20T18:31" at the location (Open-Meteo's local time) → epoch ms. */
@@ -143,14 +148,36 @@ var Data = (function () {
     var now = Date.now();
     if (fetchingWeather || (now - weatherAt < 30 * 60000 && now >= weatherAt)) return;
     fetchingWeather = true;
-    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + Place.lat + '&longitude=' + Place.lon + QUERY;
+    var at = place();
+    var url = 'https://api.open-meteo.com/v1/forecast?latitude=' + Prefs.latitude() + '&longitude=' + Prefs.longitude() + QUERY;
     get(url, {}, function (err, body) {
       fetchingWeather = false;
+      if (at !== place()) { refreshWeather(); return; }   // another city was picked meanwhile
       if (err) return;
       weather = parseWeather(body);
       weatherAt = Date.now();
-      store('weather', {place: PLACE, body: body, at: weatherAt, query: QUERY});
+      store('weather', {place: at, body: body, at: weatherAt, query: QUERY});
       changed();
+    });
+  }
+
+  /** Places with this name (Open-Meteo, in the app's language): done(error, [{label, city, lat, lon}]). */
+  function findCity(name, done) {
+    var lang = I18N.lang.replace(/-.*/, '');   // Open-Meteo takes the language without the country
+    get('https://geocoding-api.open-meteo.com/v1/search?count=10&format=json&language=' + lang + '&name='
+        + encodeURIComponent(name.trim()), {}, function (err, body) {
+      if (err) { done(err); return; }
+      var results = (body && body.results) || [], out = [], seen = {};
+      for (var i = 0; i < results.length; i++) {
+        var r = results[i], city = r.name || '';
+        if (!city || typeof r.latitude !== 'number' || typeof r.longitude !== 'number') continue;
+        var label = city, parts = [r.admin1, r.country];
+        for (var j = 0; j < parts.length; j++) if (parts[j] && parts[j] !== city) label += ', ' + parts[j];
+        if (seen['#' + label]) continue;   // places with the same name, state and country read the same
+        seen['#' + label] = true;
+        out.push({label: label, city: city, lat: r.latitude.toFixed(4), lon: r.longitude.toFixed(4)});
+      }
+      done(null, out);
     });
   }
 
@@ -235,7 +262,7 @@ var Data = (function () {
 
   var KEY = (CONFIG.tmdbKey || '').trim();
   var REGION = Place.country;
-  var API = 'https://api.themoviedb.org/3';
+  var API = 'https://api.tmdb.org/3';   // TMDB's own mirror of api.themoviedb.org: some ISPs block the other name (#327)
 
   /** Service name on TMDB (part of it, lowercase) → our key, how to find its app on the TV (id, name), its name. */
   var SERVICES = [
@@ -539,13 +566,16 @@ var Data = (function () {
 
   return {
     COINS: COINS,
-    city: Place.city,
+    get city() { return Prefs.city(); },
     currency: CURRENCY,
     onChange: function (fn) { listeners.push(fn); },
     setApps: function (apps) { installed = apps; },
     appFor: appFor,
     refresh: function () { refreshWeather(); refreshPrices(); refreshRecs(); },
     settingsChanged: function () { pricesAt = 0; refreshPrices(); changed(); },
+    findCity: findCity,
+    /** Another city picked: its weather now (none shown until it comes). */
+    cityChanged: function () { weather = null; weatherAt = 0; refreshWeather(); changed(); },
     get weather() { return weather; },
     get weatherAt() { return weatherAt; },
     prices: prices,

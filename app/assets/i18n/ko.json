@@ -99,6 +99,7 @@
  "Not installed": "설치되지 않음",
  "Nothing": "없음",
  "Now Playing widget": "재생 중 위젯",
+ "Now playing: {what}": "재생 중: {what}",
  "OK adds or removes (up to {n}). ← → change the order.": "OK로 추가 또는 제거(최대 {n}개). ← →로 순서 변경.",
  "OK adds or removes a button. ← → change the order.": "OK로 버튼 추가 또는 제거. ← →로 순서 변경.",
  "OK adds or removes an app. ← → change the order.": "OK로 앱 추가 또는 제거. ← →로 순서 변경.",

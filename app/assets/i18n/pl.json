@@ -99,6 +99,7 @@
  "Not installed": "Niezainstalowane",
  "Nothing": "Nic",
  "Now Playing widget": "Widget Teraz odtwarzane",
+ "Now playing: {what}": "Teraz odtwarzane: {what}",
  "OK adds or removes (up to {n}). ← → change the order.": "OK dodaje lub usuwa (maks. {n}). ← → zmieniają kolejność.",
  "OK adds or removes a button. ← → change the order.": "OK dodaje lub usuwa przycisk. ← → zmieniają kolejność.",
  "OK adds or removes an app. ← → change the order.": "OK dodaje lub usuwa aplikację. ← → zmieniają kolejność.",
