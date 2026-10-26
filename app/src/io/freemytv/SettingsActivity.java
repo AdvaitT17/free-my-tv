@@ -187,8 +187,8 @@ public class SettingsActivity extends Activity {
         private Bitmap keyQr;
         private boolean keyChecking;
         private int[] keyRowIds = new int[0];
-        private StaticLayout keySteps, keyStatus;
-        private Paint keyHeading, keyUrl, qrPaint;
+        private StaticLayout keyPurpose, keySteps, keyStatus;
+        private Paint keyHeading, keyUrl, qrPaint, qrSlot;
         private final RectF tmp = new RectF(), rowRect = new RectF(), focusBox = new RectF();
         private JSONObject state = new JSONObject(), recs = new JSONObject();
         private boolean hasKey;
@@ -412,6 +412,8 @@ public class SettingsActivity extends Activity {
             keyUrl = Ui.text(Ui.medium, 27 * k, 0xF2FFFFFF);
             qrPaint = new Paint();   // no filtering: each module stays a sharp square
             qrPaint.setFilterBitmap(false);
+            qrSlot = new Paint(Paint.ANTI_ALIAS_FLAG);
+            qrSlot.setColor(0x14FFFFFF);
         }
 
         private boolean busy() {
@@ -1163,7 +1165,7 @@ public class SettingsActivity extends Activity {
         // MARK: - TMDB key (from a phone through KeyPage's QR code, or typed with the remote)
 
         private static final int K_NEW = 0, K_TYPE = 1, K_REMOVE = 2;
-        private static final float QR_SIDE = 330;
+        private static final float QR_SIDE = 300;
 
         private static String keyLabel(int id) {
             return id == K_NEW ? Ui.tr("New code") : id == K_TYPE ? Ui.tr("Type it with the remote") : Ui.tr("Remove the key");
@@ -1181,6 +1183,9 @@ public class SettingsActivity extends Activity {
                     + "\n3. " + Ui.tr("Scan this code with your phone and paste the API Read Access Token (or the API Key) there.");
             int width = Math.round((LIST_R - LIST_X - 60 - QR_SIDE - 40) * k);
             keySteps = StaticLayout.Builder.obtain(steps, 0, steps.length(), notice, width).setLineSpacing(6 * k, 1).build();
+            String purpose = Ui.tr("The key brings the picks: what's trending on your streaming apps, with their photos on the screensaver.");
+            keyPurpose = StaticLayout.Builder.obtain(purpose, 0, purpose.length(), notice, Math.round((LIST_R - LIST_X - 60) * k))
+                    .setMaxLines(3).setEllipsize(TextUtils.TruncateAt.END).build();
             startKeyPage();
         }
 
@@ -1365,13 +1370,23 @@ public class SettingsActivity extends Activity {
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
                 c.drawText(keyLabel(keyRowIds[i]), rowRect.left + 30 * k, rowRect.centerY() + Ui.halfCap(rowLabel), rowLabel);
             }
-            float top = (LIST_TOP + 20 + 3 * pitch + 24) * k;   // where three rows end: the code doesn't move as rows come and go
+            float top = (LIST_TOP + 20 + rows * pitch + 16) * k;
+            if (keyPurpose != null) {   // what the key is for, then how to get one
+                c.save();
+                c.translate(x, top);
+                keyPurpose.draw(c);
+                c.restore();
+                top += keyPurpose.getHeight() + 26 * k;
+            }
             Bitmap qr = keyQr;
             if (qr != null) {
                 int n = qr.getWidth();
                 float side = Math.max(1, (int) (QR_SIDE * k / n)) * n;   // whole pixels per module
                 tmp.set(x, top, x + side, top + side);
                 c.drawBitmap(qr, null, tmp, qrPaint);
+            } else {   // used up or expired: where the code goes, until New code
+                tmp.set(x, top, x + QR_SIDE * k, top + QR_SIDE * k);
+                c.drawRoundRect(tmp, 12 * k, 12 * k, qrSlot);
             }
             float below = top + QR_SIDE * k;
             if (keySteps != null) {

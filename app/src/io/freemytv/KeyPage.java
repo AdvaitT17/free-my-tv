@@ -237,14 +237,15 @@ final class KeyPage {
     /** How to get a key, then the field to paste it in. */
     private byte[] form() {
         StringBuilder b = top();
-        b.append("<p>").append(esc(Ui.tr("Free, and it takes two minutes:"))).append("</p><ol><li>")
+        b.append("<p>").append(esc(Ui.tr("The key brings the picks: what's trending on your streaming apps, with their photos on the screensaver.")))
+                .append("</p><p>").append(esc(Ui.tr("Free, and it takes two minutes:"))).append("</p><ol><li>")
                 .append(esc(Ui.tr("Create an account at themoviedb.org."))).append("</li><li>")
                 .append(esc(Ui.tr("Open Settings → API and request a developer key."))).append("</li><li>")
                 .append(esc(Ui.tr("Paste the API Read Access Token (or the API Key) here:"))).append("</li></ol>")
                 .append("<p><a class=b href=\"https://www.themoviedb.org/settings/api\" target=_blank rel=noreferrer>")
                 .append(esc(Ui.tr("Open TMDB's API page"))).append("</a></p>")
                 .append("<form method=post action=\"").append(path).append("\">")
-                .append("<textarea name=key rows=4 required autocomplete=off autocapitalize=off autocorrect=off spellcheck=false></textarea>")
+                .append("<textarea name=key aria-label=\"").append(esc(Ui.tr("TMDB key"))).append("\" rows=4 required autocomplete=off autocapitalize=off autocorrect=off spellcheck=false></textarea>")
                 .append("<button>").append(esc(Ui.tr("Send to the TV"))).append("</button></form><p class=s>")
                 .append(esc(Ui.tr("The key stays on your TV. This page works once, for 5 minutes."))).append("</p>");
         return bottom(b);
