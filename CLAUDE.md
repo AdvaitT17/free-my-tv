@@ -65,9 +65,9 @@ before you do it, and let them do the taps on the TV.
    after any other app comes to the front. The switch's benchmark opens the original home screen a few times (that's
    the launcher flashing by during "Measuring…"), so TGuard can kill `ModeJob` there (log: `TGuardMemoryManagerKillHandler
    ... tguard-kill`, then `Scheduling restart of crashed service io.freemytv/.ModeJob`). The JobScheduler runs the job
-   again by itself within about a minute, and a benchmark that fails only logs now (it used to read as "Couldn't turn on
-   Free My TV: Read timed out", #277). Tell them: if the screen stops on "Measuring…", wait a minute, then press Home;
-   Free My TV opening confirms the switch. No `adb`/`appops` setting turns TGuard off (its content providers aren't
+   again by itself within a minute or two, and a benchmark that fails only logs now (it used to read as "Couldn't turn on
+   Free My TV: Read timed out", #277). Tell them: if the settings screen closes on the stock launcher, wait a minute or two, then press
+   Home; Free My TV opening confirms the switch. No `adb`/`appops` setting turns TGuard off (its content providers aren't
    exported to the shell user).
    Chromecast with Google TV (Android 14) refuses port 5555 even with USB debugging on: have them turn on *Wireless
    debugging*, pair with `adb pair <address:port> <code>` (the code is on the TV), then run `adb tcpip 5555` over that

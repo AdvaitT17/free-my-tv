@@ -402,6 +402,7 @@ final class HomeMode {
                         + "show there: Claude Code can remove them from your computer), then try once more."));
             }
             if (metrics(latest, ORIGINAL) == null && !home.isEmpty()) {
+                putMetric(c, ORIGINAL, "at", System.currentTimeMillis());   // first: a retry after TCL's TGuard killed the job skips it (#277)
                 busy(c, Ui.tr("Measuring the original home screen…"));
                 measure(c, adb, ORIGINAL, true);
             }
@@ -476,7 +477,7 @@ final class HomeMode {
             busy(c, Ui.tr("Measuring Free My TV…"));
             measure(c, adb, FREE, false);
             done(c, null);
-            adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
+            homeAfter(adb);
             ModeJob.schedule(c, ModeJob.MEMORY, FREE, 120_000);
         } catch (Exception e) {
             done(c, Ui.trf("Couldn't turn on Free My TV: {error}", "error", e.getMessage()));
@@ -549,7 +550,7 @@ final class HomeMode {
             busy(c, Ui.tr("Measuring the original home screen…"));
             measure(c, adb, ORIGINAL, false);
             done(c, null);
-            adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
+            homeAfter(adb);
             ModeJob.schedule(c, ModeJob.MEMORY, ORIGINAL, 120_000);
         } catch (Exception e) {
             done(c, Ui.trf("Couldn't go back to the original: {error}", "error", e.getMessage()));
@@ -1009,6 +1010,15 @@ final class HomeMode {
             if (m.find()) pss += Long.parseLong(m.group(1));
         }
         if (pss > 0) putMetric(c, mode, "homePssMB", pss / 1024);
+    }
+
+    /** The home screen after a finished switch: if ADB went away meanwhile, the switch still reads as done. */
+    private static void homeAfter(Adb adb) {
+        try {
+            adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
+        } catch (IOException e) {
+            AppLog.w("home after the switch: " + e.getMessage());
+        }
     }
 
     private static void putMetric(Context c, String mode, String key, long value) throws JSONException {
