@@ -93,6 +93,11 @@ function call(uri, clientKey, done) {
 
 service.register('ssap', function (message) {
   var p = message.payload || {};
+  // Only the app list, the one call the page makes: nothing else goes to the TV's API, nor gets its client key.
+  if (p.uri !== 'com.webos.applicationManager/listLaunchPoints') {
+    message.respond({returnValue: false, errorText: 'Only listLaunchPoints'});
+    return;
+  }
   call(p.uri, p.clientKey, function (result) {
     if (!result) message.respond({returnValue: false, errorText: 'No answer from the remote control API'});
     else {
