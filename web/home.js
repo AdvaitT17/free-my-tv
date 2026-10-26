@@ -1364,6 +1364,7 @@
     st.shelf = 0;
     if (st.tab !== 0) { st.tab = 0; renderCards(); }
     updateFocus();
+    restInDrawer();   // drawer_first: out again at once, not only after the TV lists its apps
   }
 
   Data.onChange(function () {
@@ -1375,7 +1376,7 @@
 
   /** drawer_first: the home screen rests with the drawer open (shelf in the middle, inputs and weather below). */
   function restInDrawer() {
-    if (!(window.CONFIG || {}).drawerFirst || !drawerItems.length || st.zone !== Z.SHELF) return;
+    if (!CONFIG.drawerFirst || !drawerItems.length || st.zone !== Z.SHELF) return;
     st.zone = Z.DRAWER;
     st.drawer = 0;
     updateFocus();
