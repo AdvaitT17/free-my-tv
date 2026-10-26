@@ -635,7 +635,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         measure(drawerLayer, width, Math.round(600 * kk));
         measure(sheetLayer, width, height);
         measure(menuLayer, width, height);
-        measure(toastLayer, Math.round(1000 * kk), Math.round(220 * kk));
+        measure(toastLayer, width, Math.round(220 * kk));   // full width: a toast may sit right of a long title
         setMeasuredDimension(width, height);
     }
 
@@ -656,7 +656,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         menuLayer.layout(0, 0, width, height);
         sheetLayer.setPivotX(width / 2f);
         sheetLayer.setPivotY(height / 2f);
-        place(toastLayer, (width - toastLayer.getMeasuredWidth()) / 2, 0);
+        place(toastLayer, 0, 0);
     }
 
     private static void place(View v, int x, int y) {
