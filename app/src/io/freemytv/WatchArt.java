@@ -26,15 +26,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * The "Continue watching" cards' pictures, decoded in the background once, at the card's size (16:9, centre-cropped),
- * and kept in memory. Drawing only reuses them. Only pictures already on the TV are read (content:// and
+ * The "Continue watching" cards' pictures, decoded in the background once, at the card's size on screen (16:9,
+ * centre-cropped), and kept in memory. Drawing only reuses them. Only pictures already on the TV are read (content:// and
  * android.resource://, from the apps themselves): the app never downloads an address another app wrote (http, https),
  * since it only talks to TMDB, Open-Meteo and Binance, and never opens files (file://). Anything else, or a picture that
  * can't be read, shows the app's TV banner instead, and isn't tried again for a while.
  */
 final class WatchArt {
+    /** The card in the 1920×1080 layout; the pictures are made at this times the UI's scale (setScale). */
     static final int W = 520, H = 292;
     private static final int MAX_BYTES = 8 << 20;
+    /** At most this many pixels decoded (~8 MB): a 60000×300 picture is sampled down before it's decoded. */
+    private static final long MAX_PIXELS = 2_000_000;
 
     private final Context app;
     private final Runnable onLoaded;
@@ -42,6 +45,7 @@ final class WatchArt {
     /** One thread for the whole process: a home screen started over (new settings) doesn't leave one behind. */
     private static final ExecutorService IO = Executors.newSingleThreadExecutor();
     private volatile boolean closed;
+    private volatile int pw = W, ph = H;   // the pictures' size in pixels
     private static final long RETRY_MS = 10 * 60_000L;
     private final Set<String> pending = new HashSet<>();
     private final Map<String, Long> failed = new HashMap<>();
@@ -49,7 +53,7 @@ final class WatchArt {
     private final Map<Bitmap, BitmapShader> shaders = new HashMap<>();   // for the rounded corners, made with the picture
     private final Map<String, Bitmap> cache = new LinkedHashMap<String, Bitmap>(16, 0.75f, true) {
         @Override protected boolean removeEldestEntry(Map.Entry<String, Bitmap> eldest) {
-            if (size() <= 16) return false;   // ~600 KB each: the row and a little more
+            if (size() <= 16) return false;   // ~600 KB each at 1080p: the row and a little more
             shaders.remove(eldest.getValue());
             return true;
         }
@@ -70,6 +74,18 @@ final class WatchArt {
             if (b != null || !failedRecently(key)) return b;
         }
         return fetch(bannerKey, null, pkg);
+    }
+
+    /** The UI's scale (width / 1920): pictures already made at another size are made again. */
+    void setScale(float k) {
+        int width = Math.max(1, Math.round(W * k)), height = Math.max(1, Math.round(H * k));
+        if (width == pw && height == ph) return;
+        pw = width;
+        ph = height;
+        synchronized (cache) {
+            cache.clear();
+            shaders.clear();
+        }
     }
 
     /** The picture's shader (get's pictures only). */
@@ -149,17 +165,21 @@ final class WatchArt {
         bounds.inJustDecodeBounds = true;
         BitmapFactory.decodeByteArray(data, 0, data.length, bounds);
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw new IOException("unreadable picture");
+        int cw = pw, ch = ph, bw = bounds.outWidth, bh = bounds.outHeight;
         BitmapFactory.Options opts = new BitmapFactory.Options();
         opts.inSampleSize = 1;
-        while (bounds.outWidth / (opts.inSampleSize * 2) >= W && bounds.outHeight / (opts.inSampleSize * 2) >= H) opts.inSampleSize *= 2;
+        // Halved while both sides stay at least the card's, or while it's still too many pixels (either side too big).
+        for (int s = 1; bw / (s * 2) >= cw && bh / (s * 2) >= ch || (long) (bw / s) * (bh / s) > MAX_PIXELS; s *= 2) {
+            opts.inSampleSize = s * 2;
+        }
         Bitmap src = BitmapFactory.decodeByteArray(data, 0, data.length, opts);
         if (src == null) throw new IOException("unreadable picture");
         // Centre crop to 16:9.
         int sw = src.getWidth(), sh = src.getHeight();
-        Rect from = sw * H > sh * W ? new Rect((sw - sh * W / H) / 2, 0, (sw + sh * W / H) / 2, sh)
-                : new Rect(0, (sh - sw * H / W) / 2, sw, (sh + sw * H / W) / 2);
-        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
-        new Canvas(out).drawBitmap(src, from, new Rect(0, 0, W, H), new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG));
+        Rect from = (long) sw * ch > (long) sh * cw ? new Rect((sw - sh * cw / ch) / 2, 0, (sw + sh * cw / ch) / 2, sh)
+                : new Rect(0, (sh - sw * ch / cw) / 2, sw, (sh + sw * ch / cw) / 2);
+        Bitmap out = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888);
+        new Canvas(out).drawBitmap(src, from, new Rect(0, 0, cw, ch), new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG));
         src.recycle();
         return out;
     }
@@ -196,14 +216,15 @@ final class WatchArt {
         } catch (PackageManager.NameNotFoundException e) {
             throw new IOException("no app " + pkg);
         }
-        Bitmap out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888);
+        int cw = pw, ch = ph;
+        Bitmap out = Bitmap.createBitmap(cw, ch, Bitmap.Config.ARGB_8888);
         Canvas c = new Canvas(out);
         c.drawColor(0xFF15161C);
         // TV banners are 16:9 already: edge to edge; an icon goes in the middle.
         boolean wide = d.getIntrinsicWidth() > d.getIntrinsicHeight();
-        int s = Math.round(H * 0.5f);
-        if (wide) d.setBounds(0, 0, W, H);
-        else d.setBounds((W - s) / 2, (H - s) / 2, (W + s) / 2, (H + s) / 2);
+        int s = Math.round(ch * 0.5f);
+        if (wide) d.setBounds(0, 0, cw, ch);
+        else d.setBounds((cw - s) / 2, (ch - s) / 2, (cw + s) / 2, (ch + s) / 2);
         d.draw(c);
         return out;
     }

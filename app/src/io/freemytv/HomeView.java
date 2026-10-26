@@ -669,6 +669,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         k = w / 1920f;
         screen.set(0, 0, w, h);
         scene.setSize(w, h);
+        watchArt.setScale(k);
         makePaints();
         gridLabels = null;
         clockMinute = -1;
