@@ -47,10 +47,13 @@ before you do it, and let them do the taps on the TV.
    degrees) and `city` for their city, `tmdb_region` (two-letter country), `show_crypto`, `currency` and `temperature` to match.
 4. **The TMDB key is theirs and secret.** Ask them to create one (free: themoviedb.org → Settings → API) and paste it
    after `tmdb_key=` in `config.properties` themselves. Don't ask for it in the chat, never print it, never commit
-   it. If they paste it in the chat anyway, put it only in `config.properties`.
+   it. If they paste it in the chat anyway, put it only in `config.properties`. With the release's APK (no
+   `config.properties`), they add it on the TV themselves: Home Settings > TMDB key (a QR code for their phone, or typed).
    Without a key everything works except the picks and their photos on the screensaver (photos they send themselves
    still show).
    The same goes for the optional `watchmode_key` (free, watchmode.com; makes picks open the title's page): theirs, secret, only in `config.properties`.
+   And for `plex_url` and `plex_token` (Google TV only; their Plex server's newest titles join the picks): the token opens
+   their Plex account, so suggest a Plex Home managed user's (the README says how), and it goes only in `config.properties`.
    The optional Immich key (with `immich_server`, their own Immich server: My Photos come from it) is even more theirs:
    it opens their photos, so it never goes in `config.properties` or the APK. They send it in their own terminal with
    `python3 tools/send_key.py <IP> immich_api_key`, which asks for it without showing it (yours can't answer that).
@@ -85,8 +88,9 @@ before you do it, and let them do the taps on the TV.
 7. **Tell them what the switch does** before they make it: the home screen and screensaver change, a short list of
    promo apps is turned off (never uninstalled), and *Original* brings it all back. On TCL, the remote's Netflix,
    YouTube and Prime buttons keep working through a small accessibility service that only reads those buttons
-   (*Free My TV* → *Remote Buttons* picks what each opens); *Original* turns it off. On Xiaomi TVs whose remote has no
-   Home button, the same service makes its Mi button open Free My TV instead of PatchWall.
+   (*Free My TV* → *Remote Buttons* picks what each opens); *Original* turns it off. On TCL's Android 11 there's no
+   service (the TV moved the volume twice with it), so there the buttons work only on Free My TV's home screen. On
+   Xiaomi TVs whose remote has no Home button, the same service makes its Mi button open Free My TV instead of PatchWall.
 8. **They switch on the TV:** *Free My TV* → *Home Screen* → *Free My TV*. The app uses the TV's own ADB on
    127.0.0.1 with its own key, so the TV asks once more to allow debugging. Don't switch modes from the computer.
    Before they switch, run `adb disconnect <IP>:5555` (connect again for step 9): on Android 8 to 10 the TV can hand
@@ -131,7 +135,8 @@ Developer Mode; Samsung's home screen stays. Two ways:
 
 - **The release, no tools:** TizenBrew Installer (github.com/reisxd/TizenBrewInstaller) installs the latest GitHub
   release when they type `simbasjungles/free-my-tv`, and on 2023+ TVs signs it with their Samsung account. That build
-  has no TMDB key (no picks) and takes the city from the TV's time zone. Walk them through the README's steps.
+  has no TMDB key built in (they type theirs in *Home Settings* → *TMDB key*) and takes the city from the TV's time
+  zone. Walk them through the README's steps.
 - **Their own build** (their city, their TMDB key), below.
 
 1. **Ask** for the TV's IP address and their city, if they didn't say.
@@ -264,6 +269,13 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   asset (its size and SHA-256 as GitHub lists them), newer than the app (versionName and versionCode) and signed with
   the release key (`Updates.RELEASE_CERT`); Android's installer always asks. A build made on a computer (not
   `--generic`, or another key) checks only when asked and never downloads.
+- The TMDB key given on the TV (`Prefs.tmdbKey`) wins over `Config.TMDB_KEY`; read it through `Recs.key()`. Its screen
+  serves a one-time page (`KeyPage`: the TV's private IPv4 on Wi-Fi or Ethernet, never a VPN's or a public one, a random
+  port and token, one POST, 5 minutes, and only while that screen shows) behind a QR code (`Qr`, byte mode, level M, after
+  Project Nayuki's MIT encoder, whose notice stays in the file), and checks a key with TMDB (`/configuration`) before
+  saving it. Never log it. Nothing may escape KeyPage's threads: `:home`'s watchdog counts it as a home screen crash.
+  On LG and Samsung it's typed in Home Settings (no QR: a web app can't serve a page): `Prefs.tmdbKey()` (localStorage)
+  wins over `CONFIG.tmdbKey`, and `Data.keyChanged()` fetches the picks again.
 - On-screen text: `Ui.tr("English")`, translated from `app/assets/i18n/<lang>.json` (keyed by the English; one
   HashMap lookup, English when a language lacks it). Text built at runtime is a pattern: `Ui.trf("{n} min ago", "n", 12)`,
   never concatenated words. A key `"context|Text"` is the same English where a language may need another word
@@ -301,6 +313,9 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   Vestel, KTC (NextStar), Sony, Xiaomi and Hisense TVs and Formovie projectors, the service is on only in Free My TV mode, and *Original* takes it out of the enabled accessibility
   services. The system waits for the service on every key, so it lives alone in the `:keys` process: what it reads is
   in `remote-keys.txt` (`Prefs.keyApp`), never in SharedPreferences, and `onKeyEvent` does no heavy work.
+  The service is also off while every button is *Nothing*, and always on TCL's Android 11 (`RemoteKeys.FILTER_SAFE`):
+  there any key filter makes the TV act on a volume key twice (one press moves 2 steps and a held key gets stuck, #325;
+  turning off only our service fixed it), so the buttons work only where they reach our home screen's window.
   Vestel (F&U and other store brands; MediaTek, Android TV 14 tested) maps its Netflix button to `KEYCODE_STEM_1`, a
   global key (`dumpsys window policy` lists them) that the key filter sees first; its YouTube, Prime Video and Google
   Play buttons stay with the system. The stock lists needed no Vestel entries.

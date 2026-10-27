@@ -1,7 +1,7 @@
 /*
  * What the home screen shows, kept in localStorage so it opens with numbers:
  *  - the picks: what's trending this week and recent releases, only from the streaming apps on this TV (TMDB, with
- *    the person's own free key from config.properties), three per hour;
+ *    the person's own free key from config.properties), 3 per hour (up to 6 in Home Settings);
  *  - weather, sunrise and sunset (Open-Meteo, every 30 min) and optional crypto prices (Binance, every 5 min).
  * Settings changed on the TV (Prefs) win over config.properties, as on Android. Built without a city (--generic), the
  * TV's time zone gives the city, and its country the currency and the region (zones.js).
@@ -10,7 +10,7 @@ var CONFIG = window.CONFIG || {};
 
 var Place = (function () {
   'use strict';
-  var EURO = /^(AT|BE|CY|DE|EE|ES|FI|FR|GR|HR|IE|IT|LT|LU|LV|MT|NL|PT|SI|SK)$/;
+  var EURO = /^(AT|BE|BG|CY|DE|EE|ES|FI|FR|GR|HR|IE|IT|LT|LU|LV|MT|NL|PT|SI|SK)$/;
 
   /** A time zone's main city: {country, lat, lon, name}, or null. */
   function zone(name) {
@@ -53,6 +53,8 @@ var Prefs = (function () {
     forecast: function () { return pick('forecast', 'hours') === 'days' ? 'days' : 'hours'; },
     quotes: function () { return pick('quotes', CONFIG.showCrypto !== false); },
     coin: function (i) { var c = pick('coins', null); return c ? c[i] !== false : true; },
+    /** Picks per tab: 3 (as it was) up to 6. */
+    cards: function () { var n = pick('cards', 3); return n < 3 ? 3 : n > 6 ? 6 : n; },
     shelf: function () { return pick('shelf', null); },
     /** The shelf_apps of the build that last set the shelf, so a new one wins once over the TV's choice. */
     shelfConfig: function () { return pick('shelfConfig', ''); },
@@ -60,7 +62,18 @@ var Prefs = (function () {
     city: function () { return pick('city', Place.city); },
     latitude: function () { return pick('latitude', Place.lat); },
     longitude: function () { return pick('longitude', Place.lon); },
+    /** The TMDB key typed on the TV (Home Settings → TMDB key), or config.properties' ('' for none). */
+    tmdbKey: function () { return String(pick('tmdbKey', CONFIG.tmdbKey || '')).trim(); },
+    /** True when the key in use was typed on the TV (Remove takes it back to config.properties'). */
+    tmdbKeyOnTV: function () { return v.tmdbKey !== undefined; },
     setCity: function (name, lat, lon) { v.city = name; v.latitude = lat; v.longitude = lon; save(); this.version++; },
+    /** Streaming services (keys like "netflix") whose titles are left out of the picks. */
+    serviceOff: function (key) { return pick('servicesOff', []).indexOf(key) >= 0; },
+    setServiceOff: function (key, off) {
+      var list = pick('servicesOff', []).filter(function (k) { return k !== key; });
+      if (off) list.push(key);
+      this.set('servicesOff', list);
+    },
     set: function (name, value) { v[name] = value; save(); this.version++; },
     setCoin: function (i, on) {
       var c = (pick('coins', null) || [true, true, true, true]).slice();
@@ -260,7 +273,7 @@ var Data = (function () {
 
   // MARK: - Picks (TMDB)
 
-  var KEY = (CONFIG.tmdbKey || '').trim();
+  var KEY = Prefs.tmdbKey();
   var REGION = Place.country;
   var API = 'https://api.tmdb.org/3';   // TMDB's own mirror of api.themoviedb.org: some ISPs block the other name (#327)
 
@@ -281,6 +294,16 @@ var Data = (function () {
   ];
 
   var installed = [];   // the TV's apps, from TV.apps()
+
+  /** A service whose app is on the TV and that the person hasn't switched off in Home Settings (Picks from). */
+  function usable(key) { return !!appFor(key) && !Prefs.serviceOff(key); }
+
+  /** The streaming services whose app is on this TV, as {key, name}, for Home Settings. */
+  function services() {
+    var out = [];
+    for (var s = 0; s < SERVICES.length; s++) if (appFor(SERVICES[s][1])) out.push({key: SERVICES[s][1], name: SERVICES[s][4]});
+    return out;
+  }
 
   /** The installed app for a service key, or null. */
   function appFor(key) {
@@ -305,10 +328,19 @@ var Data = (function () {
     return null;
   }
 
-  function tmdb(path, done) {
-    var bearer = KEY.indexOf('eyJ') === 0;   // read access token (v4) or API key (v3)
-    var url = API + path + (bearer ? '' : (path.indexOf('?') >= 0 ? '&' : '?') + 'api_key=' + encodeURIComponent(KEY));
-    get(url, bearer ? {Authorization: 'Bearer ' + KEY, Accept: 'application/json'} : {Accept: 'application/json'}, done);
+  function tmdb(path, done, key) {
+    key = key || KEY;
+    var bearer = key.indexOf('eyJ') === 0;   // read access token (v4) or API key (v3)
+    var url = API + path + (bearer ? '' : (path.indexOf('?') >= 0 ? '&' : '?') + 'api_key=' + encodeURIComponent(key));
+    get(url, bearer ? {Authorization: 'Bearer ' + key, Accept: 'application/json'} : {Accept: 'application/json'}, done);
+  }
+
+  /** Asks TMDB whether a key works before it's saved: done(error), with error.rejected when TMDB said no. */
+  function checkKey(key, done) {
+    tmdb('/configuration', function (err) {
+      if (err && /rejected/.test(err.message)) err.rejected = true;
+      done(err || null);
+    }, key);
   }
 
   var cache = stored('recs') || {};
@@ -324,7 +356,7 @@ var Data = (function () {
 
   function sourceStamp() {
     var s = KEY.length + ':' + KEY.slice(-6) + ':' + REGION + (CONFIG.hideAnimation ? ':no-animation' : '');
-    for (var i = 0; i < SERVICES.length; i++) s += appFor(SERVICES[i][1]) ? '1' : '0';
+    for (var i = 0; i < SERVICES.length; i++) s += usable(SERVICES[i][1]) ? '1' : '0';
     return s;
   }
 
@@ -334,18 +366,18 @@ var Data = (function () {
     return (cut > 0 ? t.slice(0, cut) : t).replace(/^\s+|\s+$/g, '');
   }
 
-  /** This hour's 3 picks: movies ("movie"), shows ("tv") or both (null). */
+  /** This hour's picks (Prefs.cards()): movies ("movie"), shows ("tv") or both (null). */
   function now(kind) {
     var list = [];
     if (!KEY) return list;
     for (var i = 0; i < picks.length; i++) {
       var p = picks[i];
-      if ((kind === null || kind === p.kind) && (!p.detailed || (p.app && appFor(p.app)))) list.push(p);
+      if ((kind === null || kind === p.kind) && (!p.detailed || (p.app && usable(p.app)))) list.push(p);
     }
     if (!list.length) return list;
-    var hour = Math.floor(Date.now() / 3600000), out = [], seen = {};
-    for (var j = 0; j < list.length && out.length < 3; j++) {
-      var q = list[(hour * 3 + j) % list.length], f = franchise(q.title);
+    var hour = Math.floor(Date.now() / 3600000), out = [], seen = {}, n = Prefs.cards();
+    for (var j = 0; j < list.length && out.length < n; j++) {
+      var q = list[(hour * n + j) % list.length], f = franchise(q.title);
       if (!seen[f]) { seen[f] = true; out.push(q); }
     }
     return out;
@@ -397,6 +429,7 @@ var Data = (function () {
       if (err) { done(err); return; }
       var best = bestBackdrop(o.images);
       if (best) p.backdrop = best;
+      if (o.poster_path) p.poster = o.poster_path;
       var parts = [];
       if (p.kind === 'tv') parts.push(tr('Series'));
       if (o.genres && o.genres.length) {
@@ -412,7 +445,7 @@ var Data = (function () {
       p.app = null;
       for (var i = 0; flat && i < flat.length && !p.app; i++) {
         var s = service(flat[i].provider_name, flat[i].provider_id);
-        if (s && appFor(s[1])) { p.app = s[1]; p.service = s[4]; }
+        if (s && usable(s[1])) { p.app = s[1]; p.service = s[4]; }
       }
       if (p.service && p.app) parts.push(p.service);
       p.meta = parts.join(' · ');
@@ -449,7 +482,7 @@ var Data = (function () {
   function addPick(list, o, kind) {
     if (!o.backdrop_path) return;
     if (CONFIG.hideAnimation && animated(o)) return;
-    list.push({id: o.id, kind: kind, title: kind === 'movie' ? o.title : o.name, backdrop: o.backdrop_path, meta: '', app: null, detailed: false});
+    list.push({id: o.id, kind: kind, title: kind === 'movie' ? o.title : o.name, backdrop: o.backdrop_path, poster: o.poster_path || '', meta: '', app: null, detailed: false});
   }
 
   function keyOf(p) { return p.kind + ':' + p.id; }
@@ -476,9 +509,9 @@ var Data = (function () {
       var ids = [];
       for (var i = 0; res.results && i < res.results.length; i++) {
         var s = service(res.results[i].provider_name, res.results[i].provider_id);
-        if (s && appFor(s[1])) ids.push(res.results[i].provider_id);
+        if (s && usable(s[1])) ids.push(res.results[i].provider_id);
       }
-      if (!ids.length) { done(new Error("none of the TV's streaming apps are on TMDB")); return; }
+      if (!ids.length) { done(new Error("none of the TV's streaming apps are on TMDB (or switched on in Picks from)")); return; }
       var common = '&language=' + lang() + '&watch_region=' + REGION + '&with_watch_monetization_types=flatrate&include_adult=false'
           + '&sort_by=popularity.desc&with_watch_providers=' + encodeURIComponent(ids.join('|'))
           + (CONFIG.hideAnimation ? '&without_genres=' + ANIMATION : '');
@@ -571,6 +604,8 @@ var Data = (function () {
     onChange: function (fn) { listeners.push(fn); },
     setApps: function (apps) { installed = apps; },
     appFor: appFor,
+    usable: usable,
+    services: services,
     refresh: function () { refreshWeather(); refreshPrices(); refreshRecs(); },
     settingsChanged: function () { pricesAt = 0; refreshPrices(); changed(); },
     findCity: findCity,
@@ -583,6 +618,9 @@ var Data = (function () {
     get pricesAt() { return pricesAt; },
     activeCoins: activeCoins,
     hasKey: function () { return !!KEY; },
+    checkKey: checkKey,
+    /** A key typed (or removed) on the TV: the picks come again with it, or go. */
+    keyChanged: function () { KEY = Prefs.tmdbKey(); recsError = ''; failedAt = 0; refreshRecs(); changed(); },
     recsError: function () { return recsError; },
     picks: now,
     showcase: all,

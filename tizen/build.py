@@ -82,7 +82,7 @@ def build(preview, config, profile):
     print('Built %s (%s %s, %d KB, %s)' % (os.path.basename(WGT), app_id, version, os.path.getsize(WGT) // 1024,
                                            'signed with "%s"' % profile if profile else 'not signed'))
     if not config['tmdbKey']:
-        print('No TMDB key: the picks stay off (everything else works).')
+        print('No TMDB key built in: the picks come once one is typed on the TV (Home Settings > TMDB key).')
 
 
 if __name__ == '__main__':

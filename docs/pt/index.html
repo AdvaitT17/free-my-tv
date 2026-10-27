@@ -229,7 +229,7 @@
             </li>
             <li><b>Compilar:</b> a primeira execução cria o <em>config.properties</em>. Coloque sua cidade lá (e <em>currency=BRL</em> para as cotações em reais) e, para os destaques, uma <a href="https://www.themoviedb.org/settings/api" rel="noopener">chave grátis do TMDB</a>. Depois compile de novo.
               <div class="code"><code>git clone https://github.com/simbasjungles/free-my-tv &amp;&amp; cd free-my-tv &amp;&amp; ./build.sh</code><button class="copy-btn" type="button" aria-label="Copiar comando">Copiar</button></div>
-              Ou pule essa parte: o <em>FreeMyTV.apk</em> da <a href="https://github.com/simbasjungles/free-my-tv/releases/latest" rel="noopener">última versão</a> instala como está, com a sua cidade pelo fuso da TV (os destaques pedem a sua própria compilação).
+              Ou pule essa parte: o <em>FreeMyTV.apk</em> da <a href="https://github.com/simbasjungles/free-my-tv/releases/latest" rel="noopener">última versão</a> instala como está, com a sua cidade pelo fuso da TV. Para os destaques, coloque a sua chave grátis do TMDB na própria TV: <em>Ajustes do Início</em> → <em>Chave do TMDB</em> mostra um QR code para o celular.
             </li>
             <li><b>Instalar:</b>
               <div class="code"><code>adb connect 192.168.1.50:5555 &amp;&amp; adb install -r FreeMyTV.apk</code><button class="copy-btn" type="button" aria-label="Copiar comando">Copiar</button></div>
@@ -260,7 +260,7 @@
             <li><b>Instale pelo GitHub:</b> digite isto. Nas TVs de 2023 em diante, ele pede para entrar na sua conta Samsung uma vez, para assinar o app para a sua TV.
               <div class="code"><code>simbasjungles/free-my-tv</code><button class="copy-btn" type="button" aria-label="Copiar">Copiar</button></div>
             </li>
-            <li><b>Direto nele:</b> nas configurações da TV (Opções da Tela Inicial ou Funções Smart), ative a <em>Execução Automática do Último Aplicativo</em>: a TV já liga no Free My TV. Ele pega a sua cidade pelo fuso da TV (dá para trocar em <em>Ajustes do Início</em> → <em>Cidade</em>); para os destaques, o Claude Code compila com as suas configurações.</li>
+            <li><b>Direto nele:</b> nas configurações da TV (Opções da Tela Inicial ou Funções Smart), ative a <em>Execução Automática do Último Aplicativo</em>: a TV já liga no Free My TV. Ele pega a sua cidade pelo fuso da TV (dá para trocar em <em>Ajustes do Início</em> → <em>Cidade</em>); para os destaques, digite a sua chave grátis do TMDB em <em>Ajustes do Início</em> → <em>Chave do TMDB</em>.</li>
           </ol>
         </div>
       </div>
@@ -293,10 +293,10 @@
         <details><summary>Muda a qualidade da imagem?</summary><p>Não. Os ajustes de imagem não são tocados e os vídeos passam pelo mesmo caminho no hardware. Medimos a mesma resolução e a mesma fonte de vídeo nos dois modos.</p></details>
         <details><summary>O que é desligado?</summary><p>A tela inicial e o protetor de tela de fábrica (substituídos), a tela de recuperação do Google TV, Play Games e YouTube Music e, nas TVs TCL, o TCL Channel, as mensagens, a demonstração de loja, o menu de hotel, os manuais e os apps de espelhamento e de registros. O Google Assistente só se você pedir no config.</p></details>
         <details><summary>Funciona em TV LG?</summary><p>Funciona. Na LG ele é instalado pelo próprio Developer Mode da LG, sem root e sem mudar nada na TV, e abre com um toque numa tecla numérica. A mesma tela inicial, com destaques, clima e cotações. Aperte EXTEND no app Developer Mode uma vez por mês para mantê-lo.</p></details>
-        <details><summary>Funciona em TV Samsung?</summary><p>Funciona, nas TVs Samsung de 2017 em diante. Ele é instalado pelo próprio Developer Mode da Samsung com o TizenBrew Installer, o instalador da comunidade, sem root e sem mudar nada na TV. A mesma tela inicial, clima e cotações, com a sua cidade pelo fuso da TV. Para os destaques, o Claude Code compila com a sua chave grátis do TMDB.</p></details>
+        <details><summary>Funciona em TV Samsung?</summary><p>Funciona, nas TVs Samsung de 2017 em diante. Ele é instalado pelo próprio Developer Mode da Samsung com o TizenBrew Installer, o instalador da comunidade, sem root e sem mudar nada na TV. A mesma tela inicial, clima e cotações, com a sua cidade pelo fuso da TV. Para os destaques, digite a sua chave grátis do TMDB nos Ajustes do Início.</p></details>
         <details><summary>Dá para deixar do meu jeito?</summary><p>Essa é a ideia. Abra a pasta no Claude Code e é só pedir: "coloque o Crunchyroll na prateleira", "mostre as cotações em reais", "configure para a minha Sony". Ele muda o código, compila o app e coloca na sua TV.</p></details>
         <details><summary>Fica em português?</summary><p>Fica. O app segue o idioma da TV (português, inglês, espanhol, russo, alemão, francês, italiano, japonês e mais 18), ou o que você escolher nos ajustes dele. Quer outro idioma? Peça ao Claude.</p></details>
-        <details><summary>Ele coleta algum dado?</summary><p>Não. Sem contas, sem análises, sem rastreamento. Ele só fala com o TMDB (destaques), o Open-Meteo (clima, da sua cidade) e a Binance (cotações), e o Watchmode (links dos títulos) só se você colocar a chave dele. No Google TV e no Android TV, o APK pronto também pergunta ao GitHub uma vez por semana se há versão nova.</p></details>
+        <details><summary>Ele coleta algum dado?</summary><p>Não. Sem contas, sem análises, sem rastreamento. Ele só fala com o TMDB (destaques), o Open-Meteo (clima, da sua cidade) e a Binance (cotações), e o Watchmode (links dos títulos) só se você colocar a chave dele. No Google TV e no Android TV, o APK pronto também pergunta ao GitHub uma vez por semana se há versão nova, e enquanto <em>Ajustes do Início</em> → <em>Chave do TMDB</em> mostra o QR code, a TV responde ao seu celular na rede de casa (uma chave, 5 minutos no máximo).</p></details>
         <details><summary>É grátis?</summary><p>Sim. Licença MIT, e a chave do TMDB também é grátis.</p></details>
       </div>
     </section>

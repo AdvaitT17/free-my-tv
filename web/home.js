@@ -315,11 +315,11 @@
 
   // MARK: - Focus
 
-  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', ABOUT: 'about'};
-  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, city: 0};
+  var Z = {TOP: 'top', CARDS: 'cards', SHELF: 'shelf', DRAWER: 'drawer', APPS: 'apps', SETTINGS: 'settings', EDIT: 'edit', LANG: 'lang', CITY: 'city', KEY: 'key', ABOUT: 'about'};
+  var st = {zone: Z.SHELF, top: 0, tab: 0, card: 0, shelf: 0, drawer: 0, grid: 0, row: 0, edit: 0, lang: 0, city: 0, key: 0};
   var cards = [];
 
-  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY || st.zone === Z.ABOUT; }
+  function sheetOpen() { return st.zone === Z.APPS || st.zone === Z.SETTINGS || st.zone === Z.EDIT || st.zone === Z.LANG || st.zone === Z.CITY || st.zone === Z.KEY || st.zone === Z.ABOUT; }
 
   function updateFocus() {
     var i, list;
@@ -331,6 +331,7 @@
     list = $('buttons').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.TOP && st.top === 3 + i);
     setClass($('quotes'), 'hide', st.zone === Z.TOP && st.top >= 3);
+    layoutCards();
     list = $('cards').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.CARDS && st.card === i);
     list = $('tiles').children;
@@ -347,6 +348,7 @@
     focusRows($('langpick'), st.lang, st.zone === Z.LANG);
     if (langHint) langHint.textContent = (st.lang + 1) + ' / ' + languageChoices().length + '  ·  ' + tr('OK picks, Back cancels.');
     focusRows($('citypick'), st.city, st.zone === Z.CITY);
+    focusRows($('keypick'), st.key, st.zone === Z.KEY);
     setClass(body, 'drawer-open', st.zone === Z.DRAWER);
   }
 
@@ -415,26 +417,50 @@
     var list = Data.picks(TAB_KIND[st.tab]);
     var holder = $('cards');
     setClass(body, 'no-picks', !list.length);
+    setClass(body, 'no-key', !Data.hasKey());   // as on Android: no title or tabs that could never show anything
+    if (!Data.hasKey() && st.zone === Z.TOP && st.top < 3) st.top = 3;
     var same = list.length === cards.length;
     for (var i = 0; same && i < list.length; i++) same = list[i].id === cards[i].id && list[i].backdrop === cards[i].backdrop && list[i].meta === cards[i].meta;
     if (same && holder.children.length === list.length) return;
     cards = list;
     holder.innerHTML = '';
-    var rects = [[80, 1040], [1160, 320], [1520, 320]];
     for (var c = 0; c < list.length; c++) {
       var p = list[c], card = el('div', 'card', holder);
-      card.style.left = rects[c][0] + 'px';
-      card.style.width = rects[c][1] + 'px';
       var img = el('div', 'img', card);
-      img.style.backgroundImage = 'url(' + Data.image(p.backdrop, c === 0 ? 'w1280' : 'w780') + ')';
+      // Narrow: the poster (the backdrop cropped without one); the wide card fades its backdrop in over it, loaded then.
+      var poster = el('div', 'layer', img);
+      poster.style.backgroundImage = 'url(' + (p.poster ? Data.image(p.poster, 'w342') : Data.image(p.backdrop, 'w780')) + ')';
+      el('div', 'layer back', img);
       el('div', 'name', card, p.title);
-      if (c === 0 && p.meta) el('div', 'meta', card, p.meta);
+      if (p.meta) el('div', 'meta', card, p.meta);
       hover(card, Z.CARDS, c);
     }
     st.card = Math.min(st.card, Math.max(0, list.length - 1));
     if (!list.length && st.zone === Z.CARDS) st.zone = Z.SHELF;
     backdrop(list.length ? Data.image(list[0].backdrop, 'w300') : '');
     updateFocus();
+  }
+
+  /**
+   * The card with focus (st.card, also while focus is elsewhere) is the wide one, the others narrow; past the third the
+   * row scrolls a card at a time (the holder slides), and the cards at the edges lose their text. Only the holder's
+   * transform and the backdrop's opacity animate: the widths change at once (older TVs).
+   */
+  function layoutCards() {
+    var holder = $('cards'), nodes = holder.children, left = 80, scroll = Math.max(0, st.card - 2) * 360;
+    for (var i = 0; i < nodes.length; i++) {
+      var wide = i === st.card, w = wide ? 1040 : 320, n = nodes[i], at = left - scroll;
+      n.style.left = left + 'px';
+      n.style.width = w + 'px';
+      setClass(n, 'wide', wide);
+      setClass(n, 'edge', at < 0 || at > 1740);
+      if (wide && !n.getAttribute('data-back') && cards[i]) {
+        n.setAttribute('data-back', '1');
+        n.querySelector('.back').style.backgroundImage = 'url(' + Data.image(cards[i].backdrop, 'w1280') + ')';
+      }
+      left += w + 40;
+    }
+    holder.style.webkitTransform = holder.style.transform = 'translateX(' + (-scroll) + 'px)';
   }
 
   var bgUrl = null, bgFront = 'bgA';
@@ -691,8 +717,10 @@
     setClass($('shelfedit'), 'open', false);
     setClass($('langpick'), 'open', false);
     setClass($('about'), 'open', false);
-    closeCityField();
+    closeField('citypick');
+    closeField('keypick');
     setClass($('citypick'), 'open', false);
+    setClass($('keypick'), 'open', false);
     langHint = null;
     st.zone = Z.SHELF;
     updateFocus();
@@ -710,6 +738,8 @@
         step: function (d) { cycle('temperature', ['auto', 'C', 'F'], unit, d); renderPanels(); }},
       {label: tr('Theme'), value: theme === 'light' ? tr('Light') : theme === 'dark' ? tr('Dark') : auto,
         step: function (d) { cycle('theme', ['auto', 'light', 'dark'], theme, d); checkNight(); }},
+      {label: tr('Picks per tab'), value: String(Prefs.cards()),
+        step: function (d) { Prefs.set('cards', 3 + (Prefs.cards() - 3 + (d || 1) + 4) % 4); renderCards(); }},
       {label: tr('Watch from the screensaver'), toggle: Prefs.saverWatch(),
         step: function () { Prefs.set('saverWatch', !Prefs.saverWatch()); }},
       {label: tr('Weather widget'), toggle: Prefs.weather(),
@@ -728,6 +758,21 @@
         rows.push({label: names[i], toggle: Prefs.quotes() && Prefs.coin(i), dim: !Prefs.quotes(),
           step: function () { if (Prefs.quotes()) { Prefs.setCoin(i, !Prefs.coin(i)); Data.settingsChanged(); } }});
       })(i);
+    }
+    rows.push({label: tr('TMDB key'), value: Prefs.tmdbKey().length >= 4 ? '•••• ' + Prefs.tmdbKey().slice(-4) : tr('Not set'), opens: true, tmdb: true,
+      step: function (d) { if (d >= 0) openKey(); }});
+    var sv = Data.services();
+    if (sv.length) {
+      var someOff = false;   // only the services this TV has count
+      for (var q = 0; q < sv.length; q++) someOff = someOff || Prefs.serviceOff(sv[q].key);
+      rows.push({label: tr('Picks from'), value: someOff ? tr('services|Some') : tr('services|All'),
+        step: function () { Prefs.set('servicesOff', []); Data.settingsChanged(); }});
+      for (var j = 0; j < sv.length; j++) {
+        (function (key, name) {
+          rows.push({label: name, toggle: !Prefs.serviceOff(key),
+            step: function () { Prefs.setServiceOff(key, !Prefs.serviceOff(key)); Data.refresh(); Data.settingsChanged(); }});
+        })(sv[j].key, sv[j].name);
+      }
     }
     rows.push({label: tr('Shelf'), value: '›', shelf: true, step: function (d) { if (d >= 0) openShelfEdit(); }});
     rows.push({label: tr('About this TV'), value: '›', about: true, step: function (d) { if (d >= 0) openAbout(); }});
@@ -827,6 +872,37 @@
     updateFocus();
   }
 
+  // MARK: - Text fields: typed with the TV's keyboard (the city, the TMDB key)
+
+  /** A row with a text field; on the TV, the focus in it brings up the keyboard. */
+  function textField(holder, zone, value, placeholder, label) {
+    var field = el('input', '', el('div', 'row field', holder));
+    field.type = 'text';
+    field.value = value;
+    field.placeholder = placeholder;
+    field.setAttribute('aria-label', label);
+    field.setAttribute('autocomplete', 'off');
+    field.setAttribute('spellcheck', 'false');
+    hover(field.parentNode, zone, 0);
+    return field;
+  }
+
+  function fieldOf(sheet) { return $(sheet).querySelector('input'); }
+
+  function typingIn(sheet) { var f = fieldOf(sheet); return !!f && document.activeElement === f; }
+
+  /** Into the field: the TV shows its keyboard. */
+  function openField(sheet) {
+    var f = fieldOf(sheet);
+    if (!f) return;
+    f.focus();
+    try { f.setSelectionRange(f.value.length, f.value.length); } catch (e) {}
+  }
+
+  function closeField(sheet) {
+    if (typingIn(sheet)) fieldOf(sheet).blur();
+  }
+
   // MARK: - City: typed with the TV's keyboard, found by Open-Meteo, as on Android (the weather is for its coordinates)
 
   var cityFound = [], cityStatus = '', cityTimer = 0, citySeq = 0;
@@ -834,22 +910,13 @@
   /** The field to type in, the Search row, then the places found. */
   function cityRows() { return 2 + cityFound.length; }
 
-  function cityField() { return $('citypick').querySelector('input'); }
-
   function renderCities() {
-    var box = $('citypick').firstChild, old = cityField(), typed = old ? old.value : '', inField = old && document.activeElement === old;
+    var box = $('citypick').firstChild, old = fieldOf('citypick'), typed = old ? old.value : '', inField = typingIn('citypick');
     box.innerHTML = '';
     el('div', 'title', box, tr('City'));
     var list = el('div', 'list', box), holder = el('div', 'rows', list);
     list.style.height = Math.min(cityRows(), 7) * 78 + 'px';
-    var field = el('input', '', el('div', 'row field', holder));
-    field.type = 'text';
-    field.value = typed;
-    field.placeholder = tr("Type the city's name");
-    field.setAttribute('aria-label', tr('City'));
-    field.setAttribute('autocomplete', 'off');
-    field.setAttribute('spellcheck', 'false');
-    hover(field.parentNode, Z.CITY, 0);
+    textField(holder, Z.CITY, typed, tr("Type the city's name"), tr('City'));
     var search = el('div', 'row', holder, tr('Search'));
     sym('chevron_right', el('span', 'value', search));
     hover(search, Z.CITY, 1);
@@ -858,7 +925,7 @@
       hover(row, Z.CITY, 2 + i);
     }
     el('div', 'hint', box, cityStatus || tr('OK picks, Back cancels.'));
-    if (inField) openCityField();   // a message that went away while typing: the keyboard stays
+    if (inField) openField('citypick');   // a message that went away while typing: the keyboard stays
     updateFocus();
   }
 
@@ -871,20 +938,7 @@
     $('citypick').firstChild.innerHTML = '';
     renderCities();
     setClass($('citypick'), 'open', true);
-    openCityField();
-  }
-
-  /** Into the field: the TV shows its keyboard. */
-  function openCityField() {
-    var f = cityField();
-    if (!f) return;
-    f.focus();
-    try { f.setSelectionRange(f.value.length, f.value.length); } catch (e) {}
-  }
-
-  function closeCityField() {
-    var f = cityField();
-    if (f && document.activeElement === f) f.blur();
+    openField('citypick');
   }
 
   function setCityStatus(text) {
@@ -900,9 +954,9 @@
   }
 
   function searchCity() {
-    var f = cityField(), name = f ? f.value : '';
-    closeCityField();
-    if (!name.trim()) { st.city = 0; openCityField(); updateFocus(); return; }
+    var f = fieldOf('citypick'), name = f ? f.value : '';
+    closeField('citypick');
+    if (!name.trim()) { st.city = 0; openField('citypick'); updateFocus(); return; }
     if (cityStatus === tr('Searching…')) return;
     setCityStatus(tr('Searching…'));
     var mine = ++citySeq;   // an answer for a sheet already closed (and opened again) is dropped
@@ -918,7 +972,7 @@
   /** OK on a place: the weather moves there. Back (pick false): nothing changes. Either way, back on the City row. */
   function closeCities(pick) {
     var place = pick && cityFound[st.city - 2];
-    closeCityField();
+    closeField('citypick');
     setClass($('citypick'), 'open', false);
     cityFound = [];
     citySeq++;
@@ -934,9 +988,131 @@
   }
 
   function activateCity() {
-    if (st.city === 0) openCityField();
+    if (st.city === 0) openField('citypick');
     else if (st.city === 1) searchCity();
     else closeCities(true);
+  }
+
+  // MARK: - TMDB key: typed on the TV, so builds without one (the releases) get the picks too; TMDB checks it first
+
+  var keyStatus = '', keyWarn = false, keyTimer = 0, keySeq = 0, keyAsking = false;
+
+  function keyRows() { return keyAsking ? 2 : Prefs.tmdbKeyOnTV() ? 3 : 2; }
+
+  function keySteps() {
+    return tr("The key brings the picks: what's trending on your streaming apps, with their photos on the screensaver.") + '\n'
+      + tr('Free, and it takes two minutes:') + '\n1. ' + tr('Create an account at themoviedb.org.')
+      + '\n2. ' + tr('Open Settings → API and request a developer key.');
+  }
+
+  function renderKey() {
+    var box = $('keypick').firstChild, old = fieldOf('keypick'), typed = old ? old.value : '', inField = typingIn('keypick');
+    box.innerHTML = '';
+    el('div', 'title', box, keyAsking ? tr('Remove the TMDB key?') : tr('TMDB key'));
+    var list = el('div', 'list', box), holder = el('div', 'rows', list);
+    list.style.height = keyRows() * 78 + 'px';
+    if (keyAsking) {
+      hover(el('div', 'row', holder, tr('Cancel')), Z.KEY, 0);
+      hover(el('div', 'row', holder, tr('Remove')), Z.KEY, 1);
+      updateFocus();
+      return;
+    }
+    var keyField = textField(holder, Z.KEY, typed, tr('API Read Access Token or API Key'), tr('TMDB key'));
+    // A v3 key is lowercase hex: the TV's keyboard mustn't capitalize it (the city's field wants capitals).
+    keyField.setAttribute('autocapitalize', 'none');
+    keyField.setAttribute('autocorrect', 'off');
+    var save = el('div', 'row', holder, tr('Save'));
+    sym('chevron_right', el('span', 'value', save));
+    hover(save, Z.KEY, 1);
+    if (Prefs.tmdbKeyOnTV()) hover(el('div', 'row', holder, tr('Remove the key')), Z.KEY, 2);
+    if (keyStatus) setClass(el('div', 'hint', box, keyStatus), 'warn', keyWarn);
+    el('div', 'hint steps', box, keySteps());
+    if (inField) openField('keypick');
+    updateFocus();
+  }
+
+  function openKey() {
+    setClass($('settings'), 'open', false);
+    st.zone = Z.KEY;
+    st.key = 0;
+    keyStatus = '';
+    keyAsking = false;
+    $('keypick').firstChild.innerHTML = '';
+    renderKey();
+    setClass($('keypick'), 'open', true);
+    openField('keypick');
+  }
+
+  function setKeyStatus(text, warn) {
+    keyStatus = text;
+    keyWarn = !!warn;
+    clearTimeout(keyTimer);
+    if (text && text !== tr('Checking the key with TMDB…')) keyTimer = setTimeout(function () {
+      keyStatus = '';
+      var line = st.zone === Z.KEY && $('keypick').querySelector('.hint:not(.steps)');
+      if (line) line.parentNode.removeChild(line);
+    }, 6000);
+    if (st.zone === Z.KEY) renderKey();
+  }
+
+  function cleanKey(typed) {
+    var key = typed.replace(/\s+/g, '');
+    return /^[A-Za-z0-9._-]{16,1024}$/.test(key) ? key : '';
+  }
+
+  function saveKey() {
+    var f = fieldOf('keypick'), typed = f ? f.value : '', key = cleanKey(typed);
+    closeField('keypick');
+    if (!typed.replace(/\s+/g, '')) { st.key = 0; openField('keypick'); updateFocus(); return; }
+    if (keyStatus === tr('Checking the key with TMDB…')) return;
+    if (!key) { setKeyStatus(tr("That doesn't look like a TMDB key."), true); return; }
+    setKeyStatus(tr('Checking the key with TMDB…'));
+    var mine = ++keySeq;   // an answer for a sheet already closed is dropped
+    Data.checkKey(key, function (err) {
+      if (mine !== keySeq || st.zone !== Z.KEY) return;
+      if (err) { setKeyStatus(err.rejected ? tr('TMDB refused this key.') : trf("Couldn't reach TMDB: {error}", {error: err.message}), true); return; }
+      Prefs.set('tmdbKey', key);
+      if (fieldOf('keypick')) fieldOf('keypick').value = '';
+      Data.keyChanged();
+      setKeyStatus(tr('Saved. The picks arrive in a moment.'));
+    });
+  }
+
+  /** Back to config.properties' key (none in the releases): the picks go. */
+  function removeKey() {
+    Prefs.set('tmdbKey', undefined);   // left out of the saved settings
+    closeKey();
+    Data.keyChanged();
+  }
+
+  /** Back on the TMDB key row of Home Settings. */
+  function closeKey() {
+    closeField('keypick');
+    setClass($('keypick'), 'open', false);
+    keySeq++;
+    clearTimeout(keyTimer);
+    keyStatus = '';
+    keyAsking = false;
+    var f = fieldOf('keypick');
+    if (f) f.value = '';
+    openSettings();
+    for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].tmdb) st.row = i;
+    updateFocus();
+  }
+
+  function askRemoveKey(on) {
+    keyAsking = on;
+    keyStatus = '';
+    clearTimeout(keyTimer);
+    st.key = on ? 0 : 2;
+    renderKey();
+  }
+
+  function activateKey() {
+    if (keyAsking) { if (st.key === 1) removeKey(); else askRemoveKey(false); }
+    else if (st.key === 0) openField('keypick');
+    else if (st.key === 1) saveKey();
+    else askRemoveKey(true);
   }
 
   // MARK: - About this TV: what to quote when reporting a problem, without LG's or Samsung's slow menus
@@ -1093,6 +1269,9 @@
       case Z.CITY:
         activateCity();
         return;
+      case Z.KEY:
+        activateKey();
+        return;
       case Z.ABOUT:
         closeAbout();
         return;
@@ -1113,7 +1292,7 @@
         else if (dy > 0) { openDrawer(); return; }
         else if (dy < 0) {
           if (cards.length) { st.zone = Z.CARDS; st.card = nearest(cardNodes, centerX(tiles[st.shelf])); }
-          else { st.zone = Z.TOP; st.top = st.tab; }
+          else { st.zone = Z.TOP; st.top = Data.hasKey() ? st.tab : 3; }
         }
         break;
       case Z.CARDS:
@@ -1123,7 +1302,7 @@
         break;
       case Z.TOP:
         if (dx) {
-          st.top = Math.max(0, Math.min(5, st.top + dx));
+          st.top = Math.max(Data.hasKey() ? 0 : 3, Math.min(5, st.top + dx));   // without the picks the tabs can't hold focus
           if (st.top < 3) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
         } else if (dy > 0) {
           if (cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < 3 ? 0 : cards.length - 1); }
@@ -1155,6 +1334,9 @@
       case Z.CITY:
         if (dy) st.city = Math.max(0, Math.min(cityRows() - 1, st.city + dy));
         break;
+      case Z.KEY:
+        if (dy) st.key = Math.max(0, Math.min(keyRows() - 1, st.key + dy));
+        break;
     }
     updateFocus();
   }
@@ -1169,6 +1351,7 @@
     }
     if (st.zone === Z.LANG) { closeLanguages(false); return; }
     if (st.zone === Z.CITY) { closeCities(false); return; }
+    if (st.zone === Z.KEY) { if (keyAsking) askRemoveKey(false); else closeKey(); return; }
     if (st.zone === Z.ABOUT) { closeAbout(); return; }
     if (sheetOpen()) { closeSheets(); return; }
     if (st.zone === Z.DRAWER) { closeDrawer(); return; }
@@ -1179,9 +1362,10 @@
   /** The pointer focuses what it's over (the Magic Remote, or a mouse when previewing). */
   function hover(node, zone, index) {
     node.onmouseover = function () {
-      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG || zone === Z.CITY || zone === Z.ABOUT))) return;
+      if (saverOn || (sheetOpen() !== (zone === Z.APPS || zone === Z.SETTINGS || zone === Z.EDIT || zone === Z.LANG || zone === Z.CITY || zone === Z.KEY || zone === Z.ABOUT))) return;
       if (zone === Z.DRAWER && st.zone !== Z.DRAWER) return;
       if (zone !== Z.DRAWER && st.zone === Z.DRAWER && zone !== Z.SHELF) return;
+      if (zone === Z.TOP && index < 3 && !Data.hasKey()) return;   // the tabs are hidden without the picks
       if (zone === Z.SHELF && st.zone === Z.DRAWER) closeDrawer();
       st.zone = zone;
       if (zone === Z.TOP) { st.top = index; if (index < 3) selectTab(index); }
@@ -1193,6 +1377,7 @@
       else if (zone === Z.EDIT) st.edit = index;
       else if (zone === Z.LANG) st.lang = index;
       else if (zone === Z.CITY) st.city = index;
+      else if (zone === Z.KEY) st.key = index;
       updateFocus();
     };
     node.onclick = function () { node.onmouseover(); activate(); };
@@ -1226,7 +1411,7 @@
 
   /** The screensaver's photos: picks with an app on the TV. */
   function saverPhotos() {
-    return Data.showcase().filter(function (p) { return p.backdrop && Data.appFor(p.app); });
+    return Data.showcase().filter(function (p) { return p.backdrop && Data.usable(p.app); });
   }
 
   function showSaver() {
@@ -1308,17 +1493,16 @@
   document.addEventListener('mousemove', function () { poke(); });
 
   /**
-   * In the city's field, the keys type (← → move in the text, Delete erases). OK or the keyboard's Done searches; Back,
+   * In a text field, the keys type (← → move in the text, Delete erases). OK or the keyboard's Done searches (or saves); Back,
    * its Cancel or ↑ ↓ leave the field. Samsung's keyboard sends Done as 65376 and Cancel as 65385. True: handled here.
    */
   function typing(k) {
-    var f = cityField();
-    if (st.zone !== Z.CITY || !f || document.activeElement !== f) return false;
-    if (k === TV.keys.ok || k === 65376) searchCity();
-    else if (k === TV.keys.back || k === 27 || k === 65385) { closeCityField(); updateFocus(); }
-    else if (k === TV.keys.up || k === TV.keys.down) { closeCityField(); move(0, k === TV.keys.up ? -1 : 1); }
-    else return true;   // typed into the field
-    return true;
+    var sheet = st.zone === Z.CITY ? 'citypick' : st.zone === Z.KEY ? 'keypick' : '';
+    if (!sheet || !typingIn(sheet)) return false;
+    if (k === TV.keys.ok || k === 65376) { if (st.zone === Z.CITY) searchCity(); else saveKey(); }
+    else if (k === TV.keys.back || k === 27 || k === 65385) { closeField(sheet); updateFocus(); }
+    else if (k === TV.keys.up || k === TV.keys.down) { closeField(sheet); move(0, k === TV.keys.up ? -1 : 1); }
+    return true;   // anything else types into the field
   }
 
   // MARK: - Start
