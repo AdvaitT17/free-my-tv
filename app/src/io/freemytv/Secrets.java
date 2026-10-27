@@ -4,6 +4,7 @@ import android.content.ContentProvider;
 import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
+import android.database.MatrixCursor;
 import android.net.Uri;
 import android.os.Binder;
 import android.os.Handler;
@@ -21,8 +22,9 @@ import java.util.List;
 /**
  * Keys that must not be in the APK (any app on the TV can read an installed APK): tools/send_key.py writes one from
  * the computer with `adb exec-in content write --uri content://io.freemytv.secrets/<name>`, and `content delete` takes
- * it away. Only adb's shell (or root) may, and only the names in NAMES; each lands in the app's private files. A new
- * feature with a secret adds its name here and reads it with get().
+ * it away; `content query` answers whether one is there and since when, never the value, so the tool can tell it
+ * arrived (`exec-in` brings back nothing the TV says). Only adb's shell (or root) may, and only the names in NAMES; each
+ * lands in the app's private files. A new feature with a secret adds its name here and reads it with get().
  */
 public class Secrets extends ContentProvider {
     /** adb's shell (Process.SHELL_UID, which the SDK only names from Android 10). */
@@ -94,7 +96,19 @@ public class Secrets extends ContentProvider {
         }
     }
 
-    @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) { return null; }
+    /** One row: present (1 or 0) and when it was received (ms, 0 if absent). Never the value. */
+    @Override public Cursor query(Uri uri, String[] projection, String selection, String[] args, String sort) {
+        String name;
+        try {
+            name = name(uri);
+        } catch (FileNotFoundException e) {
+            return null;
+        }
+        File f = file(getContext(), name);
+        MatrixCursor row = new MatrixCursor(new String[] {"present", "received"});
+        row.addRow(new Object[] {f.isFile() ? 1 : 0, f.isFile() ? f.lastModified() : 0});
+        return row;
+    }
     @Override public String getType(Uri uri) { return null; }
     @Override public Uri insert(Uri uri, ContentValues values) { return null; }
     @Override public int update(Uri uri, ContentValues values, String selection, String[] args) { return 0; }

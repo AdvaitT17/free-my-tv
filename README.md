@@ -158,7 +158,7 @@ The first values come from `config.properties`, created by the first build (Goog
 | `hide_apps` | Apps to leave out of the shelf, All Apps and the picks, by id or name (part of it), comma separated; for apps the TV ships that can't be uninstalled, like Samsung's built-in Netflix. LG and Samsung only | empty |
 | `shelf_apps` | The shelf's apps in this order, by id or name (part of it), comma separated; changing it wins once over the shelf picked on the TV. On Samsung, a whole app id also brings an app the TV leaves out of its list, like one installed in Developer Mode. LG and Samsung only | empty |
 | `drawer_first` | `true` opens the home screen with the drawer already out (apps in the middle, inputs, weather and prices below), so nothing has to be scrolled to reach the inputs; Back closes it to the full page. For a TV whose streaming apps live on a box, where the picks stay empty. LG and Samsung only | `false` |
-| `immich_server` | Optional: your [Immich](https://immich.app) server: [your own photos](#from-an-immich-server) come from it, on TVs with the Immich app (its key goes to the TV with `tools/send_key.py`, never here). Google TV only | empty |
+| `immich_server` | Optional: your [Immich](https://immich.app) server: [your own photos](#from-an-immich-server) come from it, on each TV you send its key to (with `tools/send_key.py`, never here). Google TV only | empty |
 
 Changed something? Run `./build.sh` and install again. Keep `freemytv.keystore`: updates are signed with it.
 
@@ -187,30 +187,21 @@ On Google TV and Android TV, with the TV connected over adb (see *Install*), sen
 python3 tools/photos.py <TV IP> beach.jpg hills.jpg Holidays/
 ```
 
-They land in the app's own folder on the TV (no permission needed); on Android 11, which keeps adb out of other apps' folders, they go through Free My TV itself. The next time the home screen, the screensaver or Free My TV's settings open, the app imports each one: turned upright, resized to fit the TV whole (never cropped) and saved without its GPS and other tags; what was sent is then deleted. The screensaver shows them in the order you sent them, instead of the picks' photos, whole and still, on black at night and white by day; without a TMDB key, one of them is the home screen's background, a new one every hour. *Home Settings* → *My Photos*: the arrows turn them on or off, OK removes them. Up to 100; JPEG, PNG and WebP, and HEIC on Android 9 and newer.
+They land in the app's own folder on the TV (no permission needed); on Android 11, which keeps adb out of other apps' folders, they go through Free My TV itself. The next time the home screen, the screensaver or Free My TV's settings open, the app imports each one: turned upright, cropped to 16:9, resized for the TV and saved without its GPS and other tags; what was sent is then deleted. The screensaver shows them in the order you sent them, instead of the picks' photos; without a TMDB key, one of them is the home screen's background, a new one every hour. *Home Settings* → *My Photos*: the arrows turn them on or off, OK removes them. Up to 100; JPEG, PNG and WebP, and HEIC on Android 9 and newer.
 
 #### From an Immich server
 
-With an [Immich](https://immich.app) server and its Android TV app installed on the TV ([Immich for Android TV](https://github.com/giejay/Immich-Android-TV), `nl.giejay.android.tv.immich`), the TV fetches them by itself. In `config.properties`, set `immich_server` to its address (`http://192.168.1.20:2283` on your network, or its `https://` address), then build and install again. Then make a key in Immich → *Account Settings* → *API Keys* (`asset.read`, `asset.view`, `asset.download` and `album.read` are enough) and send it to the TV:
+With an [Immich](https://immich.app) server, the TV can fetch them by itself. In `config.properties`, set `immich_server` to its address (`http://192.168.1.20:2283` on your network, or its `https://` address), then build and install again. Then make a key in Immich → *Account Settings* → *API Keys* (`asset.read`, `asset.view`, `asset.download` and `album.read` are enough) and send it to each TV that should show your photos (Android 9 and newer):
 
 ```bash
 python3 tools/send_key.py <TV IP> immich_api_key
 ```
 
-It asks for the key without showing it, checks it with your server, and puts it in the app's private storage on the TV over adb. It never goes into the APK, which any app on the TV can read, nor into `config.properties`; `--remove` takes it off the TV.
+It asks for the key without showing it, checks it with your server (a search, a preview and an original, as the TV does), puts it in the app's private storage on the TV over adb, and asks the TV whether it arrived. It never goes into the APK, which any app on the TV can read, nor into `config.properties`; `--remove` takes it off the TV. A TV without the key keeps *My Photos* as above.
 
-Every 6 hours, when the home screen opens, a new random choice of 40 photos comes in (at least 1080 pixels on their short side), one at a time, through the same import; the oldest go to keep 100. *Home Settings* → *My Photos* then chooses where they come from: *Default* (none of yours: the picks' photos), *Immich: all photos* or one of its albums. Without the Immich app on the TV, *My Photos* stays as described above, even with a server set: Free My TV can't read the app's own server and key (they're its private data), so it needs its own. A server given as `http://` must be on your own network (a private address like `192.168.1.20`, or a `.local`, `.lan` or `.home.arpa` name; the build stops otherwise), and only its address may be reached without HTTPS; anything else needs `https://` (over Tailscale, the server's `https://<machine>.<tailnet>.ts.net` address, which Tailscale can serve with a certificate).
+Every 6 hours, when the home screen opens, a new random choice of up to 40 photos comes in (at least 1080 pixels on their short side), one at a time, through the same import. Nothing goes before something new has come: at 100 the oldest of Immich's make room, and the photos you sent with `tools/photos.py` always stay. *Home Settings* → *My Photos* then chooses where they come from: *Default* (none of yours: the picks' photos), *Immich: all photos* or one of its albums; after a change, the previous ones go as the new ones arrive. TVs with little memory or a 720p screen take Immich's preview of each photo instead of the original.
 
-### Your Plex library (optional)
-
-Set `plex_url` and `plex_token` in `config.properties`, and one of the newest movies and one of the newest shows of your Plex server (another one each time the list is made, a few times a day, among the latest 8 of each kind) join the picks, with their own poster and backdrop, tagged "Plex". A tab shows at most one. Selecting one opens the title's page in the Plex app. If the server can't be reached when the list is made, its titles are left out.
-
-This is for Google TV and Android TV, and it needs the TMDB key and at least one streaming app on the TV: without those no picks come at all, Plex included.
-
-- **`plex_url`** is the server's own `plex.direct` address, which has a valid certificate (the TV checks it as for any site; plain `http` and any other address are ignored, so a typo never sends your token anywhere). It looks like `https://192-168-1-20.0123456789abcdef0123456789abcdef.plex.direct:32400`: your server's local IP with dashes, then its id. Open any item in Plex's web app, *Get Info → View XML*, and the address bar has it, before `/library/...`.
-- **`plex_token`** is on the same address, after `X-Plex-Token=`. It gives access to your Plex account, and any app on the TV can read the APK it is built into, so use the token of a Plex Home *managed user* with access to your libraries, not your own, and never commit it.
-
-The TV talks to your server directly on your network. If the server can't be reached, the other picks load as usual.
+A server given as `http://` must be on your own network (a private address like `192.168.1.20`, or a `.local`, `.lan` or `.home.arpa` name; the build stops otherwise), and only its address may be reached without HTTPS; anything else needs `https://` (over Tailscale, the server's `https://<machine>.<tailnet>.ts.net` address, which Tailscale can serve with a certificate). The app never follows a redirect from it, so the key only goes to that address.
 
 ## Going back
 

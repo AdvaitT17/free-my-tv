@@ -1739,7 +1739,9 @@ public class SettingsActivity extends Activity {
                 float f = drawRowBackground(c, i);
                 boolean off = unavailable(i) != null;
                 rowLabel.setColor(off ? blend(0x73FFFFFF, 0x731C1C1E, f) : blend(0xF2FFFFFF, INK, f));
-                c.drawText(pickLabels.get(at), rowRect.left + 30 * k, rowRect.centerY() + Ui.halfCap(rowLabel), rowLabel);
+                // A long name (an Immich album) stops short of the check mark.
+                c.drawText(TextUtils.ellipsize(pickLabels.get(at), new TextPaint(rowLabel), rowRect.width() - 130 * k,
+                        TextUtils.TruncateAt.END).toString(), rowRect.left + 30 * k, rowRect.centerY() + Ui.halfCap(rowLabel), rowLabel);
                 if (off) {
                     rowValue.setColor(blend(0x59FFFFFF, 0x591C1C1E, f));
                     c.drawText(Ui.tr("Unavailable"), rowRect.right - 30 * k, rowRect.centerY() + Ui.halfCap(rowLabel), rowValue);

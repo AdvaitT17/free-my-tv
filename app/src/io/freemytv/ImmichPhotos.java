@@ -1,7 +1,6 @@
 package io.freemytv;
 
 import android.content.Context;
-import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -17,14 +16,18 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * My Photos from an Immich server (immich_server in config.properties, its key sent by tools/send_key.py into Secrets,
- * never in the APK): every 6 hours, a random choice of its photos goes through the same import as the ones a computer sends (Photos: upright, whole, the
- * screensaver's size), one at a time, so at most one original is on disk at once. The oldest go to make room. Only on
- * a TV with the Immich app (APP): elsewhere My Photos stays as it was, even with a server set.
+ * My Photos from an Immich server (immich_server in config.properties, its key sent to each TV by tools/send_key.py
+ * into Secrets, never in the APK): every 6 hours, a random choice of its photos goes through the same import as the
+ * ones a computer sends, one at a time, so at most one original is on disk at once. Nothing goes before something new
+ * has come: at Photos.MAX the oldest of Immich's make room, and after a change of source the previous source's photos
+ * go one for each new one. Photos sent with tools/photos.py are never touched. A TV without the key shows My Photos
+ * as before, even in a build with a server set: the key sent by hand is what says this TV shows Immich.
  */
 final class ImmichPhotos {
     private ImmichPhotos() {}
@@ -43,35 +46,18 @@ final class ImmichPhotos {
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile boolean running;
 
-    /**
-     * Immich's own Android TV app. Its server and key are its private data, so ours come from config.properties and
-     * Secrets; the app being there is what says this TV is meant to show Immich.
-     */
-    static final String APP = "nl.giejay.android.tv.immich";
-    private static volatile boolean appThere;
     private static volatile String key = "";
     private static volatile long checkedAt = -1;
 
-    /**
-     * A server in config.properties, its key sent to this TV (Secrets) and the Immich app on it, all looked up again
-     * every 30 s at most: the settings screen asks every frame.
-     */
+    /** A server in config.properties and its key sent to this TV, read again every 30 s at most (Settings asks every frame). */
     static boolean configured(Context c) {
         if (Config.IMMICH_SERVER.trim().isEmpty()) return false;
         long now = SystemClock.uptimeMillis();
         if (checkedAt < 0 || now - checkedAt > 30_000) {
-            boolean there;
-            try {
-                c.getPackageManager().getApplicationInfo(APP, 0);
-                there = true;
-            } catch (PackageManager.NameNotFoundException e) {
-                there = false;
-            }
-            appThere = there;
             key = Secrets.get(c, Secrets.IMMICH_KEY);
             checkedAt = now;
         }
-        return appThere && !key.isEmpty();
+        return !key.isEmpty();
     }
 
     /** An album with photos in it: what My Photos can show. */
@@ -107,14 +93,27 @@ final class ImmichPhotos {
         });
     }
 
-    /** My Photos' source changed (Home Settings): the photos go, and a new choice comes at the next home screen. */
+    /**
+     * My Photos' source changed (Home Settings): a new choice comes at the next home screen, and Immich's photos from
+     * before go as it comes. Default (none of yours) takes Immich's away now; tools/photos.py's always stay.
+     */
     static void sourceChanged(Context c) {
         Context app = c.getApplicationContext();
         //noinspection ResultOfMethodCallIgnored
         new File(app.getFilesDir(), "immich-sync").delete();
         boolean mine = !"default".equals(Prefs.photoSource());
-        WORKER.execute(() -> Photos.removeAll(app));   // after a sync under way, never during it
+        long at = System.currentTimeMillis();
+        // On the worker, after a sync under way: what that one brings is the previous source's too
+        WORKER.execute(() -> {
+            if (mine) touch(changed(app), at);
+            else Photos.removeImmich(app);
+        });
         Prefs.setPhotos(mine);
+    }
+
+    /** Its time is when the source last changed (absent: no previous source's photos to replace). */
+    private static File changed(Context app) {
+        return new File(app.getFilesDir(), "immich-source");
     }
 
     /** Starts a sync in the background when one is due (and My Photos is on); `ready` runs on the main thread after. */
@@ -147,7 +146,14 @@ final class ImmichPhotos {
         JSONArray found = new JSONArray(request("/api/search/random", query.toString()));
         File inbox = Photos.privateInbox(app);
         if (!inbox.isDirectory() && !inbox.mkdirs()) throw new IOException("can't create " + inbox);
-        Photos.dropOldest(app, Photos.MAX - COUNT);
+        // The previous source's photos, oldest first: one goes for each new one, the rest once new ones came
+        File changed = changed(app);
+        List<File> previous = new ArrayList<>();
+        if (changed.exists()) {
+            for (File f : Photos.fromImmich(app)) if (Photos.importedAt(f) < changed.lastModified()) previous.add(f);
+        }
+        // Low-memory and 720p TVs take Immich's preview (about 1440 px) rather than decode a 24 MP original
+        boolean small = Backdrop.W <= 1280 || HomeApps.lowRam(app);
         int got = 0;
         for (int i = 0; i < found.length() && got < COUNT; i++) {
             JSONObject a = found.getJSONObject(i);
@@ -159,26 +165,43 @@ final class ImmichPhotos {
                 if (w > 0 && h > 0 && Math.min(w, h) < MIN_SIDE) continue;
             }
             long size = exif == null ? 0 : exif.optLong("fileSizeInByte");
-            boolean original = "image/jpeg".equals(a.optString("originalMimeType")) && size < MAX_ORIGINAL;
-            File part = new File(inbox, ".immich-" + id), done = new File(inbox, "immich-" + id + ".jpg");
+            boolean original = !small && "image/jpeg".equals(a.optString("originalMimeType")) && size < MAX_ORIGINAL;
+            if (Photos.count(app) >= Photos.MAX && !makeRoom(app, previous)) break;   // all of them are photos.py's
+            File part = new File(inbox, "." + Photos.IMMICH + id), done = new File(inbox, Photos.IMMICH + id + ".jpg");
             try {
                 download("/api/assets/" + id + (original ? "/original" : "/thumbnail?size=preview"), part);
                 if (!part.renameTo(done)) continue;
-                got++;
-                Photos.importWaiting(app);   // right away: the next original doesn't wait beside this one
+                // Right away: the next original doesn't wait beside this one
+                if (Photos.importWaiting(app) > 0) {
+                    got++;
+                    if (!previous.isEmpty()) previous.remove(0).delete();
+                }
             } catch (IOException e) {
                 AppLog.w("immich: photo skipped: " + e.getMessage());
             } finally {
                 part.delete();
             }
         }
+        if (got > 0) {
+            for (File f : previous) f.delete();
+            changed.delete();
+        }
         return got;
+    }
+
+    /** Room for one more at Photos.MAX: the previous source's oldest, else Immich's oldest; never tools/photos.py's. */
+    private static boolean makeRoom(Context app, List<File> previous) {
+        if (!previous.isEmpty()) return previous.remove(0).delete();
+        List<File> immich = Photos.fromImmich(app);
+        return !immich.isEmpty() && immich.get(0).delete();
     }
 
     private static HttpURLConnection open(String path) throws IOException {
         String server = Config.IMMICH_SERVER.trim();
         if (server.endsWith("/")) server = server.substring(0, server.length() - 1);
         HttpURLConnection http = (HttpURLConnection) new URL(server + path).openConnection();
+        // Never followed: on a redirect to another host only Authorization is dropped, and x-api-key would go along
+        http.setInstanceFollowRedirects(false);
         http.setConnectTimeout(10_000);
         http.setReadTimeout(30_000);
         http.setRequestProperty("x-api-key", key);

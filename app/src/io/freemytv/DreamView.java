@@ -323,13 +323,11 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         decoding = true;
         final int gen = generation;
         final Recs.Pick chosen = pick;
-        // Your photos whole, on black at night and white by day (the picks' photos fill the screen)
-        final int around = pick.photo == null ? 0 : data.isNight(System.currentTimeMillis()) ? 0xFF000000 : 0xFFFFFFFF;
         worker.execute(() -> {
             Bitmap[] images = null;
             float[] light = new float[2];
             try {
-                images = Backdrop.photo(file, PW, PH, light, around);
+                images = Backdrop.photo(file, PW, PH, light);
                 images[0] = Backdrop.gpu(withScrims(images[0], chosen.photo == null, light[0], light[1]));
             } catch (Exception | OutOfMemoryError e) {
                 AppLog.w("screensaver: photo for “" + (chosen.photo != null ? chosen.photo.getName() : chosen.title) + "”: " + e.getMessage());
@@ -402,13 +400,10 @@ final class DreamView extends View implements Choreographer.FrameCallback, HomeD
         glassShader.setInputShader("imageB", incoming != null ? incoming.shader : current.shader);
     }
 
-    /**
-     * Photo position and scale now: zoom from 1 to 1.1 (or back) and a pan toward a corner, never showing an edge. Your
-     * own photos stay still, whole.
-     */
+    /** Photo position and scale now: zoom from 1 to 1.1 (or back) and a pan toward a corner, never showing an edge. */
     private void place(Slide s, long up, float[] out) {
         float u = Ui.clamp((up - s.startedAt) / (float) (SHOW_MS + FADE_MS));
-        float f = s.pick.photo != null ? 0 : s.zoomIn ? u : 1 - u;
+        float f = s.zoomIn ? u : 1 - u;
         float z = 1 + ZOOM * f;
         float rx = w * (z - 1) / 2, ry = h * (z - 1) / 2;
         out[0] = rx * (s.panX * f - 1);
