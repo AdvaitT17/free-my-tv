@@ -110,7 +110,7 @@ You need an LG TV (webOS 3 or newer) and a computer on the same Wi-Fi, with Pyth
 
 With an AI assistant, say *"Install Free My TV (github.com/simbasjungles/free-my-tv) on my LG TV at 192.168.1.50. I live in Lisbon."* It builds the app and hands you the install command, so you type the passphrase yourself.
 
-With the [webOS Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel), you can skip the computer: add the repository `https://freemytv.io/webos/apps.json` in the Channel's settings, and Free My TV shows up in its list. That's the release build: it takes the city from the TV's time zone (change it in *Home Settings* → *City*), and the picks need your own build with a [TMDB key](#the-tmdb-key). If you installed your own build, don't update it from there, or the release replaces it.
+With the [webOS Homebrew Channel](https://github.com/webosbrew/webos-homebrew-channel), you can skip the computer: add the repository `https://freemytv.io/webos/apps.json` in the Channel's settings, and Free My TV shows up in its list. That's the release build: it takes the city from the TV's time zone (change it in *Home Settings* → *City*), and for the picks you type your [TMDB key](#the-tmdb-key) in *Home Settings* → *TMDB key*. If you installed your own build, don't update it from there, or the release replaces it.
 
 On webOS 6 and newer, LG doesn't let apps installed through Developer Mode see which apps the TV has. Free My TV then shows the well-known ones it finds (Netflix, YouTube, Prime Video, Disney+, Apple TV, Plex and more) and asks the TV, once, for the access LG's phone app uses: a message on the TV asks whether to allow Free My TV. Allow it, and from the next start all your apps show, with their icons.
 
@@ -132,7 +132,7 @@ You need a Samsung TV on Tizen, from 2015 or newer, and a computer on the same W
 3. **Install from GitHub:** type `simbasjungles/free-my-tv`. On 2023 and newer TVs it asks you to sign in to your Samsung account once, to sign the app for your TV.
 4. **Straight to it:** in the TV's settings, under Start Screen Options, turn on **Autorun Last App**: the TV turns on into Free My TV.
 
-This build takes your city from the TV's time zone (change it in *Home Settings* → *City*). For the trending picks, build it with your own `config.properties` and [TMDB key](#the-tmdb-key): open the folder in Claude Code and say *"Install Free My TV on my Samsung TV at 192.168.1.50. I live in Lisbon."* It sets up Samsung's tools, and on 2023 and newer TVs you sign in to your Samsung account in the browser to make the certificate. Your signed build installs with `python3 tizen/install.py 192.168.1.50`, which needs only Python: no Tizen Studio, and no Rosetta on Apple Silicon Macs.
+This build takes your city from the TV's time zone (change it in *Home Settings* → *City*), and for the trending picks you type your [TMDB key](#the-tmdb-key) in *Home Settings* → *TMDB key*. To build it with your own `config.properties` instead, open the folder in Claude Code and say *"Install Free My TV on my Samsung TV at 192.168.1.50. I live in Lisbon."* It sets up Samsung's tools, and on 2023 and newer TVs you sign in to your Samsung account in the browser to make the certificate. Your signed build installs with `python3 tizen/install.py 192.168.1.50`, which needs only Python: no Tizen Studio, and no Rosetta on Apple Silicon Macs.
 
 ## Settings
 
@@ -169,7 +169,9 @@ shows a QR code. Scan it with your phone (on the same Wi-Fi), paste the key and 
 keeps it. The code works once, for 5 minutes, and only while it's on screen. The phone's page is plain HTTP on your own
 Wi-Fi: on a network you don't trust (a hotel's), type the key instead. No phone at hand? *Type it with the remote*: the
 short *API Key* (32 characters) is the easier one to type. A key added on the TV wins over the one in `config.properties`,
-and *Remove the key* goes back to it. LG and Samsung still take it from `config.properties`.
+and *Remove the key* goes back to it.
+
+On LG and Samsung you can also type it on the TV, in *Home Settings* → *TMDB key*: the short *API Key* (32 characters) is the easier one to type with the remote. TMDB checks it before it's saved, it stays on the TV, and it wins over the one in `config.properties` (*Remove the key* goes back to that one).
 
 ### Opening a title, not just its app (optional)
 

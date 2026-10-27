@@ -60,6 +60,10 @@ var Prefs = (function () {
     city: function () { return pick('city', Place.city); },
     latitude: function () { return pick('latitude', Place.lat); },
     longitude: function () { return pick('longitude', Place.lon); },
+    /** The TMDB key typed on the TV (Home Settings → TMDB key), or config.properties' ('' for none). */
+    tmdbKey: function () { return String(pick('tmdbKey', CONFIG.tmdbKey || '')).trim(); },
+    /** True when the key in use was typed on the TV (Remove takes it back to config.properties'). */
+    tmdbKeyOnTV: function () { return v.tmdbKey !== undefined; },
     setCity: function (name, lat, lon) { v.city = name; v.latitude = lat; v.longitude = lon; save(); this.version++; },
     set: function (name, value) { v[name] = value; save(); this.version++; },
     setCoin: function (i, on) {
@@ -260,7 +264,7 @@ var Data = (function () {
 
   // MARK: - Picks (TMDB)
 
-  var KEY = (CONFIG.tmdbKey || '').trim();
+  var KEY = Prefs.tmdbKey();
   var REGION = Place.country;
   var API = 'https://api.tmdb.org/3';   // TMDB's own mirror of api.themoviedb.org: some ISPs block the other name (#327)
 
@@ -305,10 +309,19 @@ var Data = (function () {
     return null;
   }
 
-  function tmdb(path, done) {
-    var bearer = KEY.indexOf('eyJ') === 0;   // read access token (v4) or API key (v3)
-    var url = API + path + (bearer ? '' : (path.indexOf('?') >= 0 ? '&' : '?') + 'api_key=' + encodeURIComponent(KEY));
-    get(url, bearer ? {Authorization: 'Bearer ' + KEY, Accept: 'application/json'} : {Accept: 'application/json'}, done);
+  function tmdb(path, done, key) {
+    key = key || KEY;
+    var bearer = key.indexOf('eyJ') === 0;   // read access token (v4) or API key (v3)
+    var url = API + path + (bearer ? '' : (path.indexOf('?') >= 0 ? '&' : '?') + 'api_key=' + encodeURIComponent(key));
+    get(url, bearer ? {Authorization: 'Bearer ' + key, Accept: 'application/json'} : {Accept: 'application/json'}, done);
+  }
+
+  /** Asks TMDB whether a key works before it's saved: done(error), with error.rejected when TMDB said no. */
+  function checkKey(key, done) {
+    tmdb('/configuration', function (err) {
+      if (err && /rejected/.test(err.message)) err.rejected = true;
+      done(err || null);
+    }, key);
   }
 
   var cache = stored('recs') || {};
@@ -583,6 +596,9 @@ var Data = (function () {
     get pricesAt() { return pricesAt; },
     activeCoins: activeCoins,
     hasKey: function () { return !!KEY; },
+    checkKey: checkKey,
+    /** A key typed (or removed) on the TV: the picks come again with it, or go. */
+    keyChanged: function () { KEY = Prefs.tmdbKey(); recsError = ''; failedAt = 0; refreshRecs(); changed(); },
     recsError: function () { return recsError; },
     picks: now,
     showcase: all,
