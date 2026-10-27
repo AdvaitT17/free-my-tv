@@ -263,14 +263,44 @@ var TV = (function () {
     var icon = a.iconPath || '';
     if (icon && icon.indexOf('://') < 0) icon = 'file://' + icon;
     if (SAMSUNG_ICONS[a.id]) icon = SAMSUNG_ICONS[a.id];
-    return {id: a.id, title: SAMSUNG_TITLES[a.id] || a.name || a.id, icon: icon, color: ''};
+    var title = SAMSUNG_TITLES[a.id] || a.name || a.id;
+    // Older Smart Hubs (a 2015 JU6075) still list Amazon's app under its old name, with another id.
+    if (/^Amazon( Instant)? Video$/i.test(title)) title = 'Prime Video';
+    var dial = /netflix/i.test(title) ? 'Netflix' : /youtube/i.test(title) && !/kids/i.test(title) ? 'YouTube' : /prime video/i.test(title) ? 'Amazon' : '';
+    if (dial) samsungDial[a.id] = dial;
+    if (dial && NATIVE.test(a.id) && !SAMSUNG_ICONS[a.id]) icon = {Netflix: 'icons/netflix.svg', YouTube: 'icons/youtube.png', Amazon: 'icons/prime.png'}[dial];
+    return {id: a.id, title: title, icon: icon, color: ''};
+  }
+
+  /**
+   * Built-in apps whose id starts with a number (11101200001.Netflix, 111299001912.YouTube and
+   * 111299001578.Amazon_Video on a 2015 JU6075, Tizen 2.3) are native, and tizen.application.launch doesn't open them;
+   * the TV's own DIAL server, which phones cast through, does.
+   */
+  var samsungDial = {}, NATIVE = /^\d+(\.|$)/;
+
+  function dialLaunch(name, done) {
+    var x = new XMLHttpRequest(), over = false;
+    x.open('POST', 'http://127.0.0.1:8001/ws/apps/' + name, true);
+    x.timeout = 8000;
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4 || over) return;
+      over = true;
+      if (done) done(x.status === 200 || x.status === 201);
+    };
+    x.ontimeout = x.onerror = function () { if (!over) { over = true; if (done) done(false); } };
+    x.setRequestHeader('Content-Type', 'text/plain; charset=utf-8');
+    x.send('');
   }
 
   function samsungLaunch(id, done) {
+    var dial = samsungDial[id];
+    if (dial && NATIVE.test(id)) { dialLaunch(dial, done); return; }
+    function failed() { if (dial) dialLaunch(dial, done); else if (done) done(false); }
     try {
-      window.tizen.application.launch(id, function () { if (done) done(true); }, function () { if (done) done(false); });
+      window.tizen.application.launch(id, function () { if (done) done(true); }, failed);
     } catch (e) {
-      if (done) done(false);
+      failed();
     }
   }
 
