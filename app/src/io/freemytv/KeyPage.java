@@ -5,6 +5,7 @@ import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
 import android.net.Network;
+import android.net.NetworkCapabilities;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -18,7 +19,9 @@ import java.net.SocketTimeoutException;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.SecureRandom;
+import java.util.ArrayList;
 import java.util.Base64;
+import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -43,6 +46,8 @@ final class KeyPage {
 
     static final long OPEN_FOR = 5 * 60_000L;
     private static final int MAX_HEAD = 8192, MAX_BODY = 4096, MAX_REQUESTS = 100, MAX_ANSWERING = 4;
+    /** A whole request (head and body), not each read: a client trickling bytes can't keep a thread for long. */
+    private static final long READ_FOR_NS = 15_000_000_000L;
 
     final String url;
     private final ServerSocket server;
@@ -73,33 +78,46 @@ final class KeyPage {
         }
     }
 
-    /** The TV's IPv4 address on its network (Wi-Fi or Ethernet), a private one first; null without a network. */
+    /**
+     * The TV's private IPv4 address (10/8, 172.16/12, 192.168/16) on its Wi-Fi or Ethernet, the active network first;
+     * never a VPN's (a phone on the Wi-Fi can't reach it) nor a public one (anyone could). Null: type the key instead.
+     */
+    @SuppressWarnings("deprecation")   // getAllNetworks: still there, and API 21
     static InetAddress lanAddress(Context c) {
-        InetAddress other = null;
         try {
             ConnectivityManager cm = c.getSystemService(ConnectivityManager.class);
-            Network network = cm == null ? null : cm.getActiveNetwork();
-            LinkProperties link = network == null ? null : cm.getLinkProperties(network);
-            if (link == null) return null;
-            for (LinkAddress a : link.getLinkAddresses()) {
-                InetAddress ip = a.getAddress();
-                if (!(ip instanceof Inet4Address) || ip.isLoopbackAddress() || ip.isLinkLocalAddress() || ip.isAnyLocalAddress()) continue;
-                if (ip.isSiteLocalAddress()) return ip;
-                if (other == null) other = ip;
+            if (cm == null) return null;
+            Network active = cm.getActiveNetwork();
+            List<Network> networks = new ArrayList<>();
+            if (active != null) networks.add(active);
+            for (Network n : cm.getAllNetworks()) if (!n.equals(active)) networks.add(n);
+            for (Network n : networks) {
+                NetworkCapabilities caps = cm.getNetworkCapabilities(n);
+                if (caps == null || caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+                        || !(caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET))) {
+                    continue;
+                }
+                LinkProperties link = cm.getLinkProperties(n);
+                if (link == null) continue;
+                for (LinkAddress a : link.getLinkAddresses()) {
+                    InetAddress ip = a.getAddress();
+                    if (ip instanceof Inet4Address && ip.isSiteLocalAddress()) return ip;
+                }
             }
         } catch (RuntimeException e) {
             AppLog.w("key page: no address: " + e);
         }
-        return other;
+        return null;
     }
 
     private void serve() {
-        long until = System.currentTimeMillis() + OPEN_FOR;
+        long until = System.nanoTime() + OPEN_FOR * 1_000_000L;   // not the wall clock, which NTP may move after a boot
         boolean expired = false;
+        int requests = 0;
         try {
-            for (int requests = 0; !closed && requests < MAX_REQUESTS; ) {
-                long left = until - System.currentTimeMillis();
-                if (left <= 0) {
+            while (!closed) {
+                long left = (until - System.nanoTime()) / 1_000_000L;
+                if (left <= 0 || requests >= MAX_REQUESTS) {   // a flood of requests ends it as time does: New code
                     expired = true;
                     break;
                 }
@@ -132,17 +150,18 @@ final class KeyPage {
     private void answer(Socket socket) {
         try (Socket s = socket) {
             s.setSoTimeout(10_000);
-            if (handle(s.getInputStream(), s.getOutputStream())) close();
-        } catch (IOException e) {
-            // A phone that went away midway: the page stays open for the next request.
+            if (handle(s.getInputStream(), s.getOutputStream(), System.nanoTime() + READ_FOR_NS)) close();
+        } catch (IOException | RuntimeException e) {
+            // A phone that went away midway: the page stays open for the next request. Nothing may escape this thread:
+            // :home's watchdog counts a crash here as the home screen's.
         } finally {
             answering.decrementAndGet();
         }
     }
 
-    /** One request. True once a key came (whatever TMDB said): the page has done its job. */
-    boolean handle(InputStream in, OutputStream out) throws IOException {
-        String head = readHead(in);
+    /** One request, read before `deadline` (System.nanoTime). True once a key came (whatever TMDB said): the page has done its job. */
+    boolean handle(InputStream in, OutputStream out, long deadline) throws IOException {
+        String head = readHead(in, deadline);
         if (head == null) return false;
         String[] line = head.substring(0, Math.max(0, head.indexOf("\r\n"))).split(" ");
         String method = line.length > 1 ? line[0] : "", target = line.length > 1 ? line[1] : "";
@@ -168,10 +187,11 @@ final class KeyPage {
         byte[] body = new byte[length];
         for (int n = 0; n < length; ) {
             int got = in.read(body, n, length - n);
-            if (got < 0) throw new IOException("cut short");
+            if (got < 0 || System.nanoTime() > deadline) throw new IOException("cut short");
             n += got;
         }
-        if (!taken.compareAndSet(false, true)) {   // two at once: the first one counts
+        // Stopped meanwhile (the screen was left, 5 minutes), or two at once: only the first, while it shows, counts.
+        if (closed || !taken.compareAndSet(false, true)) {
             respond(out, "409 Conflict", "text/html; charset=utf-8", result(Ui.tr("This code has expired.")));
             return false;
         }
@@ -181,12 +201,12 @@ final class KeyPage {
         return true;
     }
 
-    /** The request line and headers, up to the blank line; null if there are none or too many. */
-    private static String readHead(InputStream in) throws IOException {
+    /** The request line and headers, up to the blank line; null if there are none, too many, or they come too slowly. */
+    private static String readHead(InputStream in, long deadline) throws IOException {
         ByteArrayOutputStream head = new ByteArrayOutputStream();
         int matched = 0, b;
         while (matched < 4 && (b = in.read()) >= 0) {
-            if (head.size() >= MAX_HEAD) return null;
+            if (head.size() >= MAX_HEAD || System.nanoTime() > deadline) return null;
             head.write(b);
             matched = (b == '\r' && (matched == 0 || matched == 2)) || (b == '\n' && (matched == 1 || matched == 3)) ? matched + 1
                     : b == '\r' ? 1 : 0;

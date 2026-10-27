@@ -188,6 +188,7 @@ public class SettingsActivity extends Activity {
         private boolean keyChecking;
         private int[] keyRowIds = new int[0];
         private StaticLayout keyPurpose, keySteps, keyStatus;
+        private String keyHelp;   // the purpose and the steps, for TalkBack
         private Paint keyHeading, keyUrl, qrPaint, qrSlot;
         private final RectF tmp = new RectF(), rowRect = new RectF(), focusBox = new RectF();
         private JSONObject state = new JSONObject(), recs = new JSONObject();
@@ -326,7 +327,9 @@ public class SettingsActivity extends Activity {
                             : Ui.tr("not on the shelf"));
                 }
                 case TMDB_KEY:
-                    return row < keyRowIds.length ? keyLabel(keyRowIds[row]) : "";
+                    if (row >= keyRowIds.length) return "";
+                    // TalkBack can't see the drawn text: the first row also says what the key is for and how to get one.
+                    return row == 0 && keyHelp != null ? keyLabel(keyRowIds[0]) + ". " + keyHelp : keyLabel(keyRowIds[row]);
                 default:
                     return "";
             }
@@ -364,6 +367,11 @@ public class SettingsActivity extends Activity {
             running = false;
             handler.removeCallbacks(poll);
             Choreographer.getInstance().removeFrameCallback(this);
+            if (keyPage != null) {   // the phone's page answers only while its code shows (not after Home, standby, another app)
+                stopKeyPage();
+                setKeyStatus(Ui.tr("This code has expired."), false);
+                keyRowsChanged();
+            }
         }
 
         @Override public void doFrame(long frameTimeNanos) {
@@ -1187,6 +1195,7 @@ public class SettingsActivity extends Activity {
             String purpose = Ui.tr("The key brings the picks: what's trending on your streaming apps, with their photos on the screensaver.");
             keyPurpose = StaticLayout.Builder.obtain(purpose, 0, purpose.length(), notice, Math.round((LIST_R - LIST_X - 60) * k))
                     .setMaxLines(3).setEllipsize(TextUtils.TruncateAt.END).build();
+            keyHelp = purpose + " " + steps.replace('\n', ' ');
             startKeyPage();
         }
 
@@ -1293,6 +1302,7 @@ public class SettingsActivity extends Activity {
             focus = 0;   // a new code just became possible: there first
             if (!added) for (int i = 0; i < n; i++) if (ids[i] == was) focus = i;
             invalidate();
+            spoken.focusMoved();   // the rows changed under TalkBack: it reads the focused one again
         }
 
         private void setKeyStatus(String text, boolean error) {
@@ -1300,7 +1310,7 @@ public class SettingsActivity extends Activity {
             TextPaint paint = error ? new TextPaint(warn) : notice;
             keyStatus = StaticLayout.Builder.obtain(text, 0, text.length(), paint, width)
                     .setMaxLines(3).setEllipsize(TextUtils.TruncateAt.END).build();
-            if (screen == TMDB_KEY) announceForAccessibility(text);
+            if (screen == TMDB_KEY && running) announceForAccessibility(text);   // not over another app
             invalidate();
         }
 

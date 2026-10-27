@@ -264,8 +264,10 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   the release key (`Updates.RELEASE_CERT`); Android's installer always asks. A build made on a computer (not
   `--generic`, or another key) checks only when asked and never downloads.
 - The TMDB key given on the TV (`Prefs.tmdbKey`) wins over `Config.TMDB_KEY`; read it through `Recs.key()`. Its screen
-  serves a one-time page (`KeyPage`: the TV's LAN address, a random port and token, one POST, 5 minutes) behind a QR
-  code (`Qr`, byte mode, level M, no library), and checks a key with TMDB (`/configuration`) before saving it. Never log it.
+  serves a one-time page (`KeyPage`: the TV's private IPv4 on Wi-Fi or Ethernet, never a VPN's or a public one, a random
+  port and token, one POST, 5 minutes, and only while that screen shows) behind a QR code (`Qr`, byte mode, level M, after
+  Project Nayuki's MIT encoder, whose notice stays in the file), and checks a key with TMDB (`/configuration`) before
+  saving it. Never log it. Nothing may escape KeyPage's threads: `:home`'s watchdog counts it as a home screen crash.
 - On-screen text: `Ui.tr("English")`, translated from `app/assets/i18n/<lang>.json` (keyed by the English; one
   HashMap lookup, English when a language lacks it). Text built at runtime is a pattern: `Ui.trf("{n} min ago", "n", 12)`,
   never concatenated words. A key `"context|Text"` is the same English where a language may need another word

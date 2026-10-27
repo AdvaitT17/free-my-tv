@@ -239,6 +239,8 @@ final class Recs {
             return Ui.trf("Couldn't reach TMDB: {error}", "error", e.getMessage() == null ? e.toString() : e.getMessage());
         } catch (org.json.JSONException e) {
             return Ui.trf("Couldn't reach TMDB: {error}", "error", e.getMessage());
+        } catch (RuntimeException e) {   // never out of KeyPage's thread (the watchdog counts it); the name only: no header value
+            return Ui.trf("Couldn't reach TMDB: {error}", "error", e.getClass().getSimpleName());
         }
     }
 

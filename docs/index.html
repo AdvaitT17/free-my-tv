@@ -235,7 +235,7 @@
             </li>
             <li><b>Build:</b> the first run creates <em>config.properties</em>. Add your city there and, for the trending picks, a <a href="https://www.themoviedb.org/settings/api" rel="noopener">free TMDB key</a>. Then build again.
               <div class="code"><code>git clone https://github.com/simbasjungles/free-my-tv &amp;&amp; cd free-my-tv &amp;&amp; ./build.sh</code><button class="copy-btn" type="button" aria-label="Copy command">Copy</button></div>
-              Or skip the build: <em>FreeMyTV.apk</em> from the <a href="https://github.com/simbasjungles/free-my-tv/releases/latest" rel="noopener">latest release</a> installs as it is, with your city from the TV's time zone (the picks need your own build).
+              Or skip the build: <em>FreeMyTV.apk</em> from the <a href="https://github.com/simbasjungles/free-my-tv/releases/latest" rel="noopener">latest release</a> installs as it is, with your city from the TV's time zone. For the picks, add your free TMDB key on the TV: <em>Home Settings</em> → <em>TMDB key</em> shows a QR code for your phone.
             </li>
             <li><b>Install:</b>
               <div class="code"><code>adb connect 192.168.1.50:5555 &amp;&amp; adb install -r FreeMyTV.apk</code><button class="copy-btn" type="button" aria-label="Copy command">Copy</button></div>
@@ -302,7 +302,7 @@
         <details><summary>Does it work on Samsung TVs?</summary><p>Yes, on Samsung TVs from 2017 on. It installs through Samsung's own Developer Mode with TizenBrew Installer, the community's installer, with nothing rooted or changed on the TV. Same home screen, weather and prices, with your city from the TV's time zone. For the trending picks, Claude Code builds it with your free TMDB key.</p></details>
         <details><summary>Can I make it mine?</summary><p>That's the idea. Open the folder in Claude Code and just ask: "add Crunchyroll to the shelf", "show prices in euros", "set it up for my Sony". It changes the code, rebuilds the app and puts it on your TV.</p></details>
         <details><summary>Does it speak my language?</summary><p>English, Spanish, Portuguese, Russian, German, French, Italian, Japanese and 18 more, following the TV's language, or the one you pick in its settings. Want another one? Ask Claude to add it.</p></details>
-        <details><summary>Does it collect any data?</summary><p>No accounts, no analytics, no tracking. It only talks to TMDB (picks), Open-Meteo (weather, for your city) and Binance (prices), and Watchmode (links to titles) only if you set its key. On Google TV and Android TV, the ready APK also asks GitHub once a week for a new version.</p></details>
+        <details><summary>Does it collect any data?</summary><p>No accounts, no analytics, no tracking. It only talks to TMDB (picks), Open-Meteo (weather, for your city) and Binance (prices), and Watchmode (links to titles) only if you set its key. On Google TV and Android TV, the ready APK also asks GitHub once a week for a new version, and while <em>Home Settings</em> → <em>TMDB key</em> shows its QR code, the TV answers your phone on your home network (one key, 5 minutes at most).</p></details>
         <details><summary>Is it free?</summary><p>Yes. MIT license, and the TMDB key is free too.</p></details>
       </div>
     </section>

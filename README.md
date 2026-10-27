@@ -166,8 +166,10 @@ Free, and it takes two minutes: create an account at [themoviedb.org](https://ww
 
 On Google TV and Android TV you can also add it on the TV, which the APK from the releases needs: *Home Settings* → *TMDB key*
 shows a QR code. Scan it with your phone (on the same Wi-Fi), paste the key and send it; the TV checks it with TMDB and
-keeps it. The code works once, for 5 minutes. No phone at hand? *Type it with the remote*. A key added on the TV wins over
-the one in `config.properties`, and *Remove the key* goes back to it. LG and Samsung still take it from `config.properties`.
+keeps it. The code works once, for 5 minutes, and only while it's on screen. The phone's page is plain HTTP on your own
+Wi-Fi: on a network you don't trust (a hotel's), type the key instead. No phone at hand? *Type it with the remote*: the
+short *API Key* (32 characters) is the easier one to type. A key added on the TV wins over the one in `config.properties`,
+and *Remove the key* goes back to it. LG and Samsung still take it from `config.properties`.
 
 ### Opening a title, not just its app (optional)
 
@@ -299,6 +301,7 @@ No accounts, no analytics, no tracking. The app talks to TMDB, Open-Meteo (with 
 - Links to the titles in the streaming apps by [Watchmode](https://api.watchmode.com/).
 - Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Prices from the [Binance](https://www.binance.com/) public API.
 - Icons: [Material Symbols](https://fonts.google.com/icons) (Apache 2.0). Font: [Inter](https://rsms.me/inter/) (SIL OFL 1.1). Coin logos: [cryptocurrency-icons](https://github.com/spothq/cryptocurrency-icons) (CC0). Samsung app logos: [Simple Icons](https://simpleicons.org) (CC0).
+- The QR code encoder follows Project Nayuki's [QR Code generator](https://www.nayuki.io/page/qr-code-generator-library) (MIT).
 - Not affiliated with Google, TCL, LG, Samsung or any streaming service. App names and logos belong to their owners.
 
 ## License
