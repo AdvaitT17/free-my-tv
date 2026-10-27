@@ -52,6 +52,8 @@ before you do it, and let them do the taps on the TV.
    Without a key everything works except the picks and their photos on the screensaver (photos they send themselves
    still show).
    The same goes for the optional `watchmode_key` (free, watchmode.com; makes picks open the title's page): theirs, secret, only in `config.properties`.
+   And for `plex_url` and `plex_token` (Google TV only; their Plex server's newest titles join the picks): the token opens
+   their Plex account, so suggest a Plex Home managed user's (the README says how), and it goes only in `config.properties`.
 5. **Build:** `./build.sh` → `FreeMyTV.apk`. Keep `freemytv.keystore`: updates must be signed with the same key.
 6. **Install:** `adb connect <IP>:5555`. The TV asks *Allow USB debugging?*: tell them to accept and tick *Always
    allow*. Then `adb install -r FreeMyTV.apk`. If it hangs, Google Play Protect is asking on the TV (Android 14:
