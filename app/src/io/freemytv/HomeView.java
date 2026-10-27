@@ -375,7 +375,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         ui = a.getSharedPreferences("home-ui", Context.MODE_PRIVATE);
         tvInputs = (TvInputManager) a.getSystemService(Context.TV_INPUT_SERVICE);
         launcherApps = (LauncherApps) a.getSystemService(Context.LAUNCHER_APPS_SERVICE);
-        if (launcherApps != null) launcherApps.registerCallback(packages, handler);
+        try {
+            if (launcherApps != null) launcherApps.registerCallback(packages, handler);
+        } catch (RuntimeException e) {   // some projectors (Rockchip rk3566 HY300) ship without the launcherapps service
+            AppLog.w("no app-change callback: " + e.getMessage());
+        }
         setFocusable(true);
         sky = new Layer(a, SKY);
         heroLayer = new Layer(a, HERO);
@@ -481,7 +485,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     void destroy() {
         pause();
-        if (launcherApps != null) launcherApps.unregisterCallback(packages);
+        try {
+            if (launcherApps != null) launcherApps.unregisterCallback(packages);
+        } catch (RuntimeException ignored) {
+        }
         click.release();
     }
 
