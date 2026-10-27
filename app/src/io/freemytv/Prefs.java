@@ -180,6 +180,19 @@ final class Prefs {
     static boolean coin(int i) { return sp().getBoolean("coin" + i, true); }
     static void setCoin(int i, boolean on) { put("coin" + i, on); }
 
+    // MARK: - TMDB key
+
+    /**
+     * The TMDB key given on the TV (Home Settings > TMDB key: from a phone, or typed), or "": then config.properties'
+     * one (Recs.key). Never logged.
+     */
+    static String tmdbKey() { return app == null ? "" : sp().getString("tmdbKey", "").trim(); }
+
+    static void setTmdbKey(String key) {   // committed: ScreensaverAlone reads it from the main process
+        sp().edit().putString("tmdbKey", key).commit();
+        version++;
+    }
+
     // MARK: - Shelf
 
     /** Packages on the home shelf, in order; null until the user edits it (then the built-in list applies). */

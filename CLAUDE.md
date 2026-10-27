@@ -47,7 +47,8 @@ before you do it, and let them do the taps on the TV.
    degrees) and `city` for their city, `tmdb_region` (two-letter country), `show_crypto`, `currency` and `temperature` to match.
 4. **The TMDB key is theirs and secret.** Ask them to create one (free: themoviedb.org → Settings → API) and paste it
    after `tmdb_key=` in `config.properties` themselves. Don't ask for it in the chat, never print it, never commit
-   it. If they paste it in the chat anyway, put it only in `config.properties`.
+   it. If they paste it in the chat anyway, put it only in `config.properties`. With the release's APK (no
+   `config.properties`), they add it on the TV themselves: Home Settings > TMDB key (a QR code for their phone, or typed).
    Without a key everything works except the picks and their photos on the screensaver (photos they send themselves
    still show).
    The same goes for the optional `watchmode_key` (free, watchmode.com; makes picks open the title's page): theirs, secret, only in `config.properties`.
@@ -262,6 +263,9 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   asset (its size and SHA-256 as GitHub lists them), newer than the app (versionName and versionCode) and signed with
   the release key (`Updates.RELEASE_CERT`); Android's installer always asks. A build made on a computer (not
   `--generic`, or another key) checks only when asked and never downloads.
+- The TMDB key given on the TV (`Prefs.tmdbKey`) wins over `Config.TMDB_KEY`; read it through `Recs.key()`. Its screen
+  serves a one-time page (`KeyPage`: the TV's LAN address, a random port and token, one POST, 5 minutes) behind a QR
+  code (`Qr`, byte mode, level M, no library), and checks a key with TMDB (`/configuration`) before saving it. Never log it.
 - On-screen text: `Ui.tr("English")`, translated from `app/assets/i18n/<lang>.json` (keyed by the English; one
   HashMap lookup, English when a language lacks it). Text built at runtime is a pattern: `Ui.trf("{n} min ago", "n", 12)`,
   never concatenated words. A key `"context|Text"` is the same English where a language may need another word
