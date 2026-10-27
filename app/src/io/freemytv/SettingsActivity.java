@@ -1019,6 +1019,7 @@ public class SettingsActivity extends Activity {
                 int at = appPkgs.indexOf(Prefs.keyApp(Prefs.KEYS[focus]));
                 int next = at < 0 ? (dir > 0 ? 0 : n - 1) : (at + dir + n) % n;
                 Prefs.setKeyApp(Prefs.KEYS[focus], appPkgs.get(next));
+                HomeMode.ensureRemoteService(getContext(), 3_000);   // all on Nothing: the service goes off
                 return;
             }
             int row = pickScroll + focus;
@@ -1382,6 +1383,9 @@ public class SettingsActivity extends Activity {
                         : RemoteKeys.HISENSE ? Ui.tr("Netflix: the TV itself controls that button.")
                         : RemoteKeys.supported() ? Ui.tr("Disney and Globoplay: the TV itself controls those buttons.")
                         : Ui.tr("TCL remote buttons: on this TV they work as always."), LIST_X * k + 30 * k, hy + 38 * k, hint);
+                // No key service on this TV (RemoteKeys.FILTER_SAFE): inside other apps the buttons do nothing.
+                if (!RemoteKeys.FILTER_SAFE) c.drawText(Ui.tr("On this TV they work on Free My TV's home screen only."),
+                        LIST_X * k + 30 * k, hy + 76 * k, hint);
             }
         }
 
@@ -1415,6 +1419,7 @@ public class SettingsActivity extends Activity {
             } else if (screen == PICKER) {
                 int at = pickScroll + focus;
                 Prefs.setKeyApp(Prefs.KEYS[pickFor - 1], appPkgs.get(at));
+                HomeMode.ensureRemoteService(c, 3_000);
                 focus = pickFor - 1;
                 screen = REMOTE_KEYS;
             } else if (screen == SHELF_EDIT) {

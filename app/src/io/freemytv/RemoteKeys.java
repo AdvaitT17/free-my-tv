@@ -46,6 +46,11 @@ final class RemoteKeys {
     static final boolean XIAOMI = is("Xiaomi") && !FORMOVIE && Build.MODEL.startsWith("MiTV-M");
     /** Brands whose Netflix button is STEM_1, a global key (MediaTek): only that button is ours. */
     static final boolean STEM_NETFLIX = VESTEL || FORMOVIE;
+    /**
+     * With a key filter on, TCL's Android 11 changes the volume twice for one press, and a held key gets stuck (#325).
+     * There the service stays off: the buttons work on our home screen, whose window gets them (BUTTON_3 never does).
+     */
+    static final boolean FILTER_SAFE = !(TCL && Build.VERSION.SDK_INT == Build.VERSION_CODES.R);
 
     /** Xiaomi's remote sends one press as a burst of separate presses: a press this soon after the last one is the same. */
     private static final long BURST_MS = 1000;
@@ -54,6 +59,13 @@ final class RemoteKeys {
 
     static boolean supported() {
         return TCL || STEM_NETFLIX || KTC || SONY || XIAOMI || HISENSE;
+    }
+
+    /** The key service is on only where the filter is safe, and while a button opens something (else it has no work). */
+    static boolean serviceWanted() {
+        if (!supported() || !FILTER_SAFE) return false;
+        for (int key : Prefs.KEYS) if (!Prefs.keyApp(key).isEmpty()) return true;
+        return false;
     }
 
     private static boolean is(String maker) {
