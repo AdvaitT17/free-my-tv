@@ -10,7 +10,7 @@ var CONFIG = window.CONFIG || {};
 
 var Place = (function () {
   'use strict';
-  var EURO = /^(AT|BE|CY|DE|EE|ES|FI|FR|GR|HR|IE|IT|LT|LU|LV|MT|NL|PT|SI|SK)$/;
+  var EURO = /^(AT|BE|BG|CY|DE|EE|ES|FI|FR|GR|HR|IE|IT|LT|LU|LV|MT|NL|PT|SI|SK)$/;
 
   /** A time zone's main city: {country, lat, lon, name}, or null. */
   function zone(name) {
