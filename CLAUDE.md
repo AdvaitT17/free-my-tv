@@ -231,7 +231,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
 `adb shell pm enable <package>` (the `DEBLOAT` list and the stock home screen), then
 `adb shell cmd package set-home-activity <stock home activity>` and
 `adb shell settings put secure screensaver_components <stock screensaver>`. On an HY300 with JmLauncher, also
-`adb shell setprop persist.sys.home.selectpkg ''`.
+`adb shell setprop persist.sys.home.selectpkg ''`. On TCL, an older version may also have turned off
+`com.tcl.channelplus` and `com.tcl.waterfall.overseas` (Live TV's channel source and TCL Channel): `pm enable` them too.
 
 ## The code
 
