@@ -231,6 +231,8 @@ final class HomeMode {
 
     /** Asks the main process to switch (the settings screen calls this). */
     static void request(Context c, String mode) {
+        // Back to Free My TV before Original's revoke ran: it would stop the app mid-switch, and isn't wanted any more.
+        if (FREE.equals(mode)) ModeJob.cancel(c, ModeJob.REVOKE_WATCH);
         ModeJob.schedule(c, ModeJob.APPLY, mode, 0);
     }
 
@@ -556,6 +558,7 @@ final class HomeMode {
             done(c, null);
             homeAfter(adb);
             ModeJob.schedule(c, ModeJob.MEMORY, ORIGINAL, 120_000);
+            if (WatchNext.allowed(c)) ModeJob.schedule(c, ModeJob.REVOKE_WATCH, null, 5_000);
         } catch (Exception e) {
             done(c, Ui.trf("Couldn't go back to the original: {error}", "error", e.getMessage()));
         }
@@ -863,6 +866,44 @@ final class HomeMode {
         if (!pkg.matches("[\\w.]*")) pkg = "";
         adb.shell("setprop " + JM_HOME + " '" + pkg + "'");
         return pkg.equals(jmHome(adb));
+    }
+
+    // MARK: - Continue Watching's permission
+
+    /**
+     * Continue Watching reads Android TV's Watch Next list, which needs READ_TV_LISTINGS. It is granted only when you
+     * pick Continue Watching (Home Settings asks this from :home), through the TV's own ADB so the TV doesn't ask;
+     * if that fails, Home Settings falls back to Android's own permission dialog.
+     */
+    static void requestWatchGrant(Context c) {
+        ModeJob.schedule(c, ModeJob.GRANT_WATCH, null, 0);
+    }
+
+    static void grantWatchNow(Context app) {
+        if (WatchNext.allowed(app)) return;
+        try (Adb adb = Adb.connect(app, 8_000, null)) {
+            adb.shell("pm grant " + PKG + " " + WatchNext.PERMISSION);
+            AppLog.w("continue watching permission " + (WatchNext.allowed(app) ? "granted" : "not granted"));
+        } catch (IOException e) {
+            AppLog.w("continue watching permission: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Original takes the permission back. Android stops the app's processes when a permission is revoked, so this runs
+     * as its own job once the switch is over (if the job is run again after that, it finds nothing left to revoke). It
+     * holds the switch lock, so a switch never runs under it, and does nothing if Free My TV is back by then.
+     */
+    static void revokeWatchNow(Context app) {
+        synchronized (RUN) {
+            if (!WatchNext.allowed(app) || !ORIGINAL.equals(state(app).optString("mode", ORIGINAL))) return;
+            try (Adb adb = Adb.connect(app, 10_000, null)) {
+                AppLog.w("continue watching permission: revoking");
+                adb.shell("pm revoke " + PKG + " " + WatchNext.PERMISSION);
+            } catch (IOException e) {
+                AppLog.w("continue watching permission: " + e.getMessage());
+            }
+        }
     }
 
     /** Whether Google TV's setup app is one of the home screens (its RecoveryActivity), so it must go off too. */

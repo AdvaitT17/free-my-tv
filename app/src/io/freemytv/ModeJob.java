@@ -14,7 +14,8 @@ import android.os.PersistableBundle;
  */
 public class ModeJob extends JobService {
     static final String APPLY = "apply", VERIFY = "verify", REVERT = "revert", MEMORY = "memory", REMOTE = "remote",
-            PLAYING = "playing", UPDATE = "update", INSTALL = "install";
+            PLAYING = "playing", UPDATE = "update", INSTALL = "install", GRANT_WATCH = "watchGrant",
+            REVOKE_WATCH = "watchRevoke";   // job ids come from these names: keep them apart
 
     @Override public boolean onStartJob(JobParameters params) {
         PersistableBundle extras = params.getExtras();
@@ -33,6 +34,8 @@ public class ModeJob extends JobService {
                     case PLAYING: HomeMode.nowPlayingAccessNow(app); break;
                     case UPDATE: again = Updates.check(app) && params.getJobId() == Updates.JOB; break;   // the week's, or OK
                     case INSTALL: Updates.install(app); break;
+                    case GRANT_WATCH: HomeMode.grantWatchNow(app); break;
+                    case REVOKE_WATCH: HomeMode.revokeWatchNow(app); break;
                     default: break;
                 }
             } catch (Throwable t) {
@@ -47,6 +50,16 @@ public class ModeJob extends JobService {
         return false;
     }
 
+    private static int id(String action) {
+        return 1000 + Math.abs(action.hashCode() % 1000);
+    }
+
+    /** Drops an action's pending job (a running one goes on). */
+    static void cancel(Context c, String action) {
+        JobScheduler scheduler = c.getSystemService(JobScheduler.class);
+        if (scheduler != null) scheduler.cancel(id(action));
+    }
+
     /** Schedules a job (one pending per action: a new request replaces the old one). */
     static void schedule(Context c, String action, String mode, long delayMs) {
         JobScheduler scheduler = c.getSystemService(JobScheduler.class);
@@ -54,7 +67,7 @@ public class ModeJob extends JobService {
         PersistableBundle extras = new PersistableBundle();
         extras.putString("action", action);
         extras.putString("mode", mode == null ? "" : mode);
-        JobInfo.Builder job = new JobInfo.Builder(1000 + Math.abs(action.hashCode() % 1000),
+        JobInfo.Builder job = new JobInfo.Builder(id(action),
                 new ComponentName(c, ModeJob.class)).setExtras(extras);
         if (delayMs > 0) job.setMinimumLatency(delayMs);
         job.setOverrideDeadline(delayMs + 2_000);

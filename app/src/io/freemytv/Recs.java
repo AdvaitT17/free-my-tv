@@ -801,10 +801,13 @@ final class Recs {
                 && cache.getString(linkKey(p), null) == null && System.currentTimeMillis() >= linkRetryAt;
     }
 
-    /** A key is set and Watchmode hasn't refused it (a refused key isn't tried again until it changes). */
+    /**
+     * A key is set, Watchmode hasn't refused it (a refused key isn't tried again until it changes) and the picks are on
+     * the home screen: with Continue Watching or the clock there, nothing opens them, so no lookups spend the quota.
+     */
     private boolean linksOn() {
         String key = Config.WATCHMODE_KEY.trim();
-        return !key.isEmpty() && cache.getInt("wm:refused", 0) != key.hashCode();
+        return !key.isEmpty() && cache.getInt("wm:refused", 0) != key.hashCode() && Prefs.topContent().equals(Prefs.TOP_PICKS);
     }
 
     /** Sets p.link from what was looked up before, or looks it up (2 requests of the free plan's 2,500 a month). */
