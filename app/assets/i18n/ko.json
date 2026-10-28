@@ -1,6 +1,8 @@
 {
  ", selected": ", 선택됨",
  ". In use": ". 사용 중",
+ "12 hours": "12시간",
+ "24 hours": "24시간",
  "24h change": "24시간 변동",
  "ADB message too large": "ADB 메시지가 너무 큽니다",
  "ADB refused the command": "ADB가 명령을 거부했습니다",

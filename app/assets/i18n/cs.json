@@ -1,6 +1,8 @@
 {
  ", selected": ", vybráno",
  ". In use": ". Používá se",
+ "12 hours": "12 hodin",
+ "24 hours": "24 hodin",
  "24h change": "změna za 24 h",
  "ADB message too large": "zpráva ADB je příliš velká",
  "ADB refused the command": "ADB odmítlo příkaz",

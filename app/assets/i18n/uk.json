@@ -1,6 +1,8 @@
 {
  ", selected": ", вибрано",
  ". In use": ". Використовується",
+ "12 hours": "12 годин",
+ "24 hours": "24 години",
  "24h change": "зміна за 24 год",
  "ADB message too large": "завелике повідомлення ADB",
  "ADB refused the command": "ADB відхилив команду",

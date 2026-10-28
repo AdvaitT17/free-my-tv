@@ -1,6 +1,8 @@
 {
  ", selected": "，已选择",
  ". In use": "。使用中",
+ "12 hours": "12 小时",
+ "24 hours": "24 小时",
  "24h change": "24 小时涨跌",
  "ADB message too large": "ADB 消息过大",
  "ADB refused the command": "ADB 拒绝了该命令",

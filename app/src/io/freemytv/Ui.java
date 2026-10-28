@@ -253,6 +253,7 @@ final class Ui {
         language = lang;
         DATE_PATTERNS.clear();
         DATE_PATTERNS_24.clear();
+        TIME_PATTERNS.clear();
         generation++;
     }
 
@@ -470,14 +471,48 @@ final class Ui {
         }
     }
 
-    /** "21:47" (in 12-hour English, "9:47", like the iPhone in the US). */
-    static String clock(long now) {
-        return Ui.datePattern("format|h:mm").format(now);
+    /** The clock's patterns, by ICU skeleton ("Hm", "hmma", "H", "ha"): each language keeps its own order. */
+    private static final Map<String, DatePattern> TIME_PATTERNS = new HashMap<>();
+
+    /**
+     * The locale's own pattern for a time skeleton, made once: "hmma" is "h:mm a" in English, "a h:mm" in Chinese and
+     * Japanese, "h:mm a" in French (the "a" keeps the AM/PM the person asked for).
+     */
+    static synchronized DatePattern timePattern(String skeleton) {
+        DatePattern pattern = TIME_PATTERNS.get(skeleton);
+        if (pattern == null) {
+            String text = android.text.format.DateFormat.getBestDateTimePattern(locale, skeleton);
+            try {
+                new SimpleDateFormat(text, locale);
+            } catch (IllegalArgumentException e) {
+                AppLog.w("time pattern " + skeleton + " in " + language + ": " + e.getMessage());
+                text = skeleton.equals("Hm") ? "HH:mm" : skeleton.equals("H") ? "HH" : skeleton.equals("ha") ? "h a" : "h:mm a";
+            }
+            pattern = new DatePattern(text, locale);
+            TIME_PATTERNS.put(skeleton, pattern);
+        }
+        return pattern;
     }
 
-    /** "5:21" (sunrise and sunset; in 12-hour English, "5:21 AM", in 24-hour English, "05:21"). */
+    /** 24-hour: "24" or "12" as chosen in the settings, or the TV's own setting for "auto". */
+    private static boolean h24() {
+        String format = Prefs.clockFormat();
+        return format.equals("24") || (format.equals("auto") && Prefs.clock24());
+    }
+
+    /** "21:47", "9:47" or "9:47 PM", as chosen in the settings; Automatic follows the TV's own 12/24-hour setting. */
+    static String clock(long now) {
+        return timePattern(h24() ? "Hm" : "hmma").format(now);
+    }
+
+    /** "5:21" (sunrise and sunset), following the clock's 12/24-hour choice. */
     static String time(long at) {
-        return once(Prefs.clock24() ? "time24" : "time", at, () -> Ui.datePattern("format|h:mm a").format(at));
+        return once(h24() ? "time24" : "time", at, () -> timePattern(h24() ? "Hm" : "hmma").format(at));
+    }
+
+    /** An hourly forecast label ("8 PM", "20"), following the clock's 12/24-hour choice. */
+    static String hour(long at) {
+        return once(h24() ? "hour24" : "hour", at, () -> timePattern(h24() ? "H" : "ha").format(at));
     }
 
     private static final HashMap<String, String> FORMATTED = new HashMap<>();
