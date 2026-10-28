@@ -41,11 +41,12 @@ final class Ui {
     private Ui() {}
 
     /**
-     * Android 8 to 11, and any TV short on memory: their GPUs need the cheaper drawing paths (Shadows, rounded
-     * images) and can't afford the off-screen layers (a 2 GB TCL on Android 12 spent 156 MB of GPU memory on them,
-     * without the AGSL shaders that only arrive on 13).
+     * Android 8 to 11, and Android 12 and 12L short on memory: their GPUs need the cheaper drawing paths (Shadows,
+     * rounded images) and can't afford the off-screen layers (a 2 GB TCL on Android 12 spent 156 MB of GPU memory on
+     * them, without the AGSL shaders that only arrive on 13). From 13 the layers also cache the shaders' glass, so
+     * they stay until a small-memory TV there is measured.
      */
-    static final boolean LEGACY = Build.VERSION.SDK_INT < 31 || smallMemory();
+    static final boolean LEGACY = Build.VERSION.SDK_INT < 31 || (Build.VERSION.SDK_INT < 33 && smallMemory());
 
     /** Under 3 GB of RAM, read from /proc: LEGACY is read before Ui.init, so there is no Context yet. */
     private static boolean smallMemory() {

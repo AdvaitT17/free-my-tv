@@ -236,9 +236,10 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
 ## The code
 
 - Java 8 language level, minSdk 26 (Android 8), targetSdk 33. No Gradle, no libraries: only the Android SDK.
-  Android 9 and older have no RenderNode (`Recording` wraps it, with a Picture there) and no `cmd role`. On Android 8 to 11
-  (`Ui.LEGACY`) the home screen skips the GPU layers, draws blurred shadows from cached bitmaps (`Shadows`) and
-  rounds images with a shader instead of clipPath: their GPUs (a Mi Box 3's Mali-450) choked on those.
+  Android 9 and older have no RenderNode (`Recording` wraps it, with a Picture there) and no `cmd role`. On Android 8 to 11,
+  and on Android 12 and 12L under 3 GB of RAM (`Ui.LEGACY`), the home screen skips the GPU layers, draws blurred
+  shadows from cached bitmaps (`Shadows`) and rounds images with a shader instead of clipPath: their GPUs (a Mi Box
+  3's Mali-450) choked on those, and a 2 GB TCL on Android 12 went into swap with the layers (#361).
   Android 11 to 12L (API 30–32) run the screensaver as `ScreensaverAlone`, in the main process: AOSP starts their
   DreamActivity in the app's default process (13 moved it to the dream's own), and it only works with the dream in that
   process, which can't also hold a home activity (a Sony BRAVIA VH22 on Android 12 crashed with it in `:home`, #94).
