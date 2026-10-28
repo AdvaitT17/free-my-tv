@@ -53,6 +53,11 @@ No tools to install besides adb. The APK on the [latest release](https://github.
    adb install -r FreeMyTV.apk
    ```
    On Android 14, Google Play Protect may hold the install with *Risky app blocked*: choose *More details* → *Install anyway*.
+
+   On TCL TVs, also let it run in the background (TCL blocks it by default, and the switch never starts):
+   ```bash
+   adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"
+   ```
 3. **On the TV**, do step 3 above.
 
 If you built Free My TV yourself before, switch back to *Original* and uninstall it first: your build and the release are signed with different keys. For the picks, add your TMDB key in *Home Settings* → *TMDB key* (below).
