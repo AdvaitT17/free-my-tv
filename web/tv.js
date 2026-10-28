@@ -12,6 +12,8 @@ var TV = (function () {
   var samsung = !webos && typeof window.tizen !== 'undefined' && !!window.tizen.application;
   var calls = [];   // a bridge is collected if nothing holds it before its reply arrives
   var tizen2 = samsung && /Tizen 2\./.test(navigator.userAgent);
+  // 2017 and 2018 Samsungs (Tizen 3 and 4) freeze opening their settings from an app (MU6100, MU6122, NU7400, #257).
+  var tizen34 = samsung && /Tizen [34]\./.test(navigator.userAgent);
   // Tizen 2 (2016 TVs, WebKit 538) repaints every shadow on every frame of a focus animation: home.css turns them off.
   // So do TVs under 2 GB that draw the page at twice its size (an LG on webOS TV Lite 10, MT5889, 1.3 GB, ratio 2:
   // 23-28 fps moving along the shelf, 60 with lite; shadows off alone, 45). deviceMemory rounds down to 1 under 2 GB on
@@ -426,9 +428,10 @@ var TV = (function () {
 
     /**
      * Whether an app can open the TV's settings. Not on Tizen 2 (a 2016 KU6300): the "settings" request and
-     * org.tizen.menu both answer success and nothing shows, and the remote API ignores MENU and HOME.
+     * org.tizen.menu both answer success and nothing shows, and the remote API ignores MENU and HOME. Nor on Tizen 3
+     * and 4, where org.tizen.menu freezes the TV (#257): the remote's own Settings button still works there.
      */
-    canOpenSettings: !tizen2,
+    canOpenSettings: !tizen2 && !tizen34,
 
     /** Installed apps, as the TV's launcher lists them: [{id, title, icon, color}]. */
     apps: function (done) {

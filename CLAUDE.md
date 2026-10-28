@@ -416,7 +416,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   data is unreliable: on Tizen 3 no app's `iconPath` loads (on Tizen 4 and 5, YouTube's and Prime Video's are a
   placeholder), so logos are bundled in `web/icons/` and keyed by app id in `SAMSUNG_ICONS` (SVGs need a width and
   height for old WebKit); some names are empty or long (`SAMSUNG_TITLES`); and Tizen 3 answers no "settings" app
-  control, so TV Settings opens `org.tizen.menu`.
+  control, and `org.tizen.menu` froze 2017 and 2018 TVs (Tizen 3 and 4, #257), so TV Settings only shows from
+  Tizen 5 (`TV.canOpenSettings`).
   `web/home.js` follows `HomeView`'s layout and behavior, so a design change on
   Android belongs there too. Text: the same catalogues as Android, packed into `i18n.js` by `tools/webapp.py` (only
   the keys `web/` uses): `tr('Live TV')`, `trf('{n} min ago', {n: 12})`, `plural('plural|…', n)` and
