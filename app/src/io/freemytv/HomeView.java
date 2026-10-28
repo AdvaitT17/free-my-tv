@@ -783,7 +783,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (tintMoving) {
             sky.invalidate();
             platter.invalidate();   // the glass follows the background's colour
-            heroDirty = true;       // the corner buttons' glass and the cards' text colours too
+            heroDirty = true;       // the cards' text colours too
+            statusDirty = true;     // and the corner buttons' glass, on the status layer
             if (glassEasing) scene.setGlassMix(tintMix.value);
         }
         if (topMoving) status.invalidate();
