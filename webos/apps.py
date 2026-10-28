@@ -5,7 +5,8 @@
 
 On webOS 3 a Developer Mode app can't see the TV's apps at all: listLaunchPoints is denied, getAppLoadStatus doesn't
 exist yet, and the TV's remote control API refuses file:// pages ("invalid origin"). The computer can still ask that
-API (port 3000, the one LG's phone app uses): the TV asks once to allow it, and the key it gives back is kept in
+API (port 3000, the one LG's phone app uses, or the same API over TLS on 3001 where the TV resets plain connections,
+as a 2024 set does): the TV asks once to allow it, and the key it gives back is kept in
 ~/.ssh/freemytv_ssap_<IP>. The list goes to webos-apps.local.json and the icons to webos-icons.local/ (their addresses
 on the TV only last while it's connected), and webos/build.py builds both into the app. Run it again after installing
 or removing apps on the TV. Python 3 only.

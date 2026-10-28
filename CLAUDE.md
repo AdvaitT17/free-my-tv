@@ -123,7 +123,8 @@ stays, and Free My TV opens with a long press of a number key.
    denied, no `getAppLoadStatus`, and the remote control API answers `invalid origin` to file:// pages). Run
    `python3 webos/apps.py <IP>`: the TV asks them once to allow it, then build and install again. It writes
    `webos-apps.local.json` and `webos-icons.local/` (git-ignored), which only the LG build packs, never `--generic`.
-   Again after they install or remove apps.
+   Again after they install or remove apps. Where the TV resets plain connections on port 3000 (a 2024 set, #355), it
+   uses the same API over TLS on 3001, and fetches the icons over https (#357).
 
 ## Installing it on a Samsung TV (Tizen)
 
