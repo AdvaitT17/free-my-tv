@@ -166,15 +166,18 @@ final class ImmichPhotos {
             }
             long size = exif == null ? 0 : exif.optLong("fileSizeInByte");
             boolean original = !small && "image/jpeg".equals(a.optString("originalMimeType")) && size < MAX_ORIGINAL;
-            if (Photos.count(app) >= Photos.MAX && !makeRoom(app, previous)) break;   // all of them are photos.py's
             File part = new File(inbox, "." + Photos.IMMICH + id), done = new File(inbox, Photos.IMMICH + id + ".jpg");
             try {
                 download("/api/assets/" + id + (original ? "/original" : "/thumbnail?size=preview"), part);
+                // Room only now that the new one is here: a download that fails takes nothing away
+                boolean full = Photos.count(app) >= Photos.MAX;
+                if (full && !makeRoom(app, previous)) break;   // all of them are tools/photos.py's
                 if (!part.renameTo(done)) continue;
-                // Right away: the next original doesn't wait beside this one
+                // Right away: the next original doesn't wait beside this one. One of the previous source's goes for
+                // each new one (already done when it made room).
                 if (Photos.importWaiting(app) > 0) {
                     got++;
-                    if (!previous.isEmpty()) previous.remove(0).delete();
+                    if (!full && !previous.isEmpty()) previous.remove(0).delete();
                 }
             } catch (IOException e) {
                 AppLog.w("immich: photo skipped: " + e.getMessage());

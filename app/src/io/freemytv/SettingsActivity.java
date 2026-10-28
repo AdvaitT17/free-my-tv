@@ -322,7 +322,8 @@ public class SettingsActivity extends Activity {
                 case PICKER: {
                     int at = pickScroll + row;
                     if (at >= pickLabels.size()) return "";
-                    return pickLabels.get(at) + (at == pickCurrent ? Ui.tr(", selected") : "")
+                    // "›" (Immich albums opens a list) is only drawn, as in Home Settings
+                    return pickLabels.get(at).replace("›", "").trim() + (at == pickCurrent ? Ui.tr(", selected") : "")
                             + ", " + Ui.trf("{i} of {n}", "i", at + 1, "n", pickLabels.size());
                 }
                 case PICK_FROM: {
@@ -1550,6 +1551,7 @@ public class SettingsActivity extends Activity {
             }
             String source = Prefs.photoSource();
             if ("default".equals(source)) return Ui.tr("photos|Default");
+            if (!Prefs.photos()) return Ui.tr("Off");   // nothing syncs: OK on a choice turns it on again
             String from = "album".equals(source) ? Ui.trf("Immich: {album}", "album", Prefs.photoAlbumName()) : Ui.tr("Immich: all");
             return photos == 0 ? from : from + " · " + Ui.plural("plural|one:{n} photo|other:{n} photos", photos);
         }
@@ -1593,6 +1595,8 @@ public class SettingsActivity extends Activity {
                 Prefs.setPhotoSource(source, id, name);
                 ImmichPhotos.sourceChanged(getContext());
             }
+            // Also when it's the same choice: My Photos turned off earlier (before the key came) is on again
+            Prefs.setPhotos(!"default".equals(source));
             focus = PHOTOS_ROW;
             pickScroll = 0;
             screen = HOME_SETTINGS;
