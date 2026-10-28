@@ -18,7 +18,7 @@ import java.util.Set;
 
 /**
  * What you were watching in your apps, from Android TV's own lists (TvContract, needs READ_TV_LISTINGS): the system
- * Watch Next list, where Netflix, Prime Video, YouTube, Plex and others note what you left half-way, and the home
+ * Watch Next list, where Prime Video, Disney+, HBO Max, Plex and others note what you left half-way, and the home
  * screen channels some apps publish under the name "Continue Watching" instead (Stremio). Newest first, a few per app,
  * so one show doesn't fill the row.
  */

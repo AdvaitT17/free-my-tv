@@ -3341,8 +3341,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (a.size() != b.size()) return false;
         for (int i = 0; i < a.size(); i++) {
             WatchNext.Item x = a.get(i), y = b.get(i);
-            if (!x.pkg.equals(y.pkg) || !x.title.equals(y.title) || x.position != y.position
-                    || !String.valueOf(x.picture()).equals(String.valueOf(y.picture()))) return false;
+            // The episode and the link too: "S2 E6" becoming "S2 E7" keeps the title, often the picture and a 0 position.
+            if (!x.pkg.equals(y.pkg) || !x.title.equals(y.title) || x.position != y.position || x.duration != y.duration
+                    || !java.util.Objects.equals(x.episode, y.episode) || !java.util.Objects.equals(x.intent, y.intent)
+                    || !java.util.Objects.equals(x.picture(), y.picture())) return false;
         }
         return true;
     }
