@@ -363,6 +363,14 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   or zoom crashes it (`SecurityException`: SurfaceFlinger doesn't know the Allwinner request code 1050): their own is
   `com.softwinner.tcorrection/.projection.ProjectionSettingActivity`, which the Keystone shortcut opens where it's
   installed.
+  HY300 Pro+ (Rockchip rk3566, Android 14 tested; product `rk3566_rgo`) has no `launcherapps` system service
+  (`service check launcherapps`: not found), so `LauncherApps.registerCallback` throws a NullPointerException and
+  `HomeView` now catches it: the shelf doesn't refresh by itself after an install there, only when the home screen
+  opens again. Its stock home is `com.htc.magcubicos`, which also holds the Wi-Fi, Bluetooth and projection settings
+  (nothing answers `android.settings.SETTINGS` in Free My TV mode). Its own "ADB debug" switch turns on Wireless
+  debugging, TLS-only on 5555, with no pairing screen in its settings: `com.android.tv.settings` (Activity Launcher,
+  from F-Droid) has one. After pairing, `adb tcpip 5555` and Wireless debugging off leave classic adb on 5555, until
+  the next restart.
 - Xiaomi's Chinese firmware (MIUI TV; Redmi `MiTV-MFTP0`, Android 9 tested) has no passthrough handler either: its own
   `com.xiaomi.mitv.tvplayer/.ExternalSourceActivity` (action `com.xiaomi.mitv.tvplayer.EXTSRC_PLAY`) opens a port from
   an `input` extra (HDMI 1 to 3 are 23 to 25; there is no number for a fourth), so `inputs` keeps HDMI 1 to 3 there.
