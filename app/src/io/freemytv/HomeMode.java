@@ -75,7 +75,6 @@ final class HomeMode {
         "com.google.android.play.games", "com.google.android.youtube.tvmusic",        // Play Games, YouTube Music
         // TCL
         "com.tcl.magiconnectfree", "com.tcl.miracast",                                // screen mirroring apps
-        "com.tcl.waterfall.overseas", "com.tcl.channelplus",                          // TCL Channel and its Live TV
         "com.tcl.messagebox", "com.tcl.usercenter",                                   // TCL messages and account
         "com.tcl.exhibit", "com.tcl.esticker", "com.tcl.hotelmenu",                   // store demo, hotel menu
         "com.tcl.repairguide", "com.tcl.ocean.instructions", "com.tcl.logkit",        // repair guide, manual, logs
@@ -115,6 +114,8 @@ final class HomeMode {
         "com.tcl.settings", "com.tcl.common.shortcutmenu", "com.tcl.inputmethod.international", "com.tcl.android.webview",
         "com.tcl.wifi.resources.overlay", "com.tcl.partnercustomizer", "com.tcl.tv.tclhome_passive",
         "com.tcl.keycustomfunctionservice",                                           // remote keys; a fallback home too
+        "com.tcl.channelplus",                                                        // the channel source TCL's Live TV tunes (off: black screen)
+        "com.tcl.waterfall.overseas",                                                 // TCL Channel: partnercustomizer's entry and key open it
         "com.google.android.gms", "com.google.android.gsf", "com.android.vending", "com.google.android.apps.mediashell",
         "com.google.android.tv.remote.service", "com.google.android.inputmethod.latin", "com.google.android.webview",
         "com.android.tv.settings", "com.android.systemui", "android", PKG,
@@ -429,7 +430,11 @@ final class HomeMode {
             // Off now and not on our list: the person turned it off, unless an earlier install of Free My TV did (its
             // list lives in the TV's settings too, since an uninstall erases our state file).
             Set<String> ours = recorded(adb);
-            for (String pkg : packages(adb, "-d")) {
+            Set<String> offNow = packages(adb, "-d");
+            // A reinstall starts from a fresh state: only the TV's record knows what an older version turned off that's
+            // no longer on the list. One that won't turn on stays recorded, so Original tries again.
+            disabled.addAll(offTheList(adb, ours, offNow, targets(home, dream, true), packageOf(home)));
+            for (String pkg : offNow) {
                 if (targets(home, dream, true).contains(pkg) && !disabled.contains(pkg) && !ours.contains(pkg)) keptOff.add(pkg);
             }
             keptOff.removeAll(ours);
@@ -708,6 +713,11 @@ final class HomeMode {
                 }
                 for (String pkg : sorted(wanted)) if (!order.contains(pkg)) order.add(pkg);
                 Set<String> disabled = new HashSet<>(stringList(s, "disabled"));
+                Set<String> gone = new HashSet<>(disabled);
+                offTheList(adb, disabled, disabledNow, targets(home, dream, true), homePkg);
+                gone.removeAll(disabled);
+                wanted.removeAll(gone);
+                order.removeAll(gone);
                 // screensaver=false after a switch with ours: the TV's own screensaver app comes back on.
                 String dreamPkg = packageOf(dream);
                 if (!Config.SCREENSAVER && dreamPkg != null && disabled.remove(dreamPkg)) {
@@ -1182,6 +1192,31 @@ final class HomeMode {
             AppLog.w("could not read the record of what we turned off: " + e.getMessage());
         }
         return out;
+    }
+
+    /**
+     * Turned off by an earlier version, now protected or off the list (TCL's Live TV source and TCL Channel): back on,
+     * and out of {@code record} (with {@code offNow}). Never Google TV's setup app or the TV's home screen here: their
+     * order is the switch's. Returns the ones still off that wouldn't turn on; they stay in {@code record}.
+     */
+    private static Set<String> offTheList(Adb adb, Set<String> record, Set<String> offNow, List<String> all, String homePkg)
+            throws IOException {
+        Set<String> stuck = new HashSet<>();
+        for (String pkg : sorted(record)) {
+            if (pkg.equals(GOOGLE_SETUP) || pkg.equals(homePkg) || (mayTurnOff(pkg) && all.contains(pkg))) continue;
+            if (!offNow.contains(pkg)) {
+                AppLog.w("dropped " + pkg + " from the record: no longer on the list");
+            } else if (adb.shell("pm enable " + pkg).contains("new state: enabled")) {
+                offNow.remove(pkg);
+                AppLog.w("turned back on " + pkg + ": no longer on the list");
+            } else {
+                AppLog.w("could not turn back on " + pkg);
+                stuck.add(pkg);
+                continue;
+            }
+            record.remove(pkg);
+        }
+        return stuck;
     }
 
     private static void record(Adb adb, Set<String> disabled) {
