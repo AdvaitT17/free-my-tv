@@ -173,7 +173,8 @@ Developer Mode; Samsung's home screen stays. Two ways:
    (`ws://<IP>:7011/devtools/page/1`; `0 kill FreeMyTVio` first to launch it again), and `0 applist` lists its web
    apps (not the native ones, below).
 8. **Tell them:** *Autorun Last App* in the TV's settings (under Start Screen Options; where it is changes by year)
-   makes the TV turn on into Free My TV.
+   makes the TV turn on into Free My TV on a 2017 set; 2019 and 2020 sets don't reopen Developer Mode apps with it
+   (#356), so there they move it to the first place in the Home bar.
 
 ## Releases
 

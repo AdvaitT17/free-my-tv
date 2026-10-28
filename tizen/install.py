@@ -200,7 +200,7 @@ def main():
     sdb.shell('0 was_execute ' + app_id, r'launched|spend time', 20)
     print('Installed and open on the TV.')
     print('Tip: turn on Autorun Last App in the TV\'s settings (General, Smart Features; where it is changes by year) '
-          'and the TV turns on into Free My TV.')
+          'and the TV turns on into Free My TV; on 2019 and 2020 TVs, move it to the first place in the Home bar instead.')
 
 
 if __name__ == '__main__':
