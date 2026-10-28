@@ -391,6 +391,8 @@ final class HomeApps {
             return out;
         }
         Collections.sort(list, (a, b) -> a.getId().compareTo(b.getId()));
+        // Allwinner's live TV player (HY300 and HY320 projectors) is the only way to the HDMI input on those boards.
+        boolean allwinner = allwinnerInputs(c);
         Pattern digit = Pattern.compile("(\\d)");
         for (int i = 0; i < list.size(); i++) {
             TvInputInfo info = list.get(i);
@@ -404,7 +406,11 @@ final class HomeApps {
                 state = tim.getInputState(info.getId());
             } catch (RuntimeException ignored) {
             }
-            if (!all && state != TvInputManager.INPUT_STATE_CONNECTED) continue;
+            // An Allwinner projector stays in "connected standby" even with a source on (HY320), and its single port
+            // always works: standby counts as connected there.
+            boolean connected = state == TvInputManager.INPUT_STATE_CONNECTED
+                    || (allwinner && state == TvInputManager.INPUT_STATE_CONNECTED_STANDBY);
+            if (!all && !connected) continue;
             CharSequence custom = null;
             try {
                 custom = info.loadCustomLabel(c);
@@ -412,25 +418,24 @@ final class HomeApps {
             }
             String reported = devices.containsKey(info.getId()) ? devices.get(info.getId()) : "";
             String label = custom != null && custom.length() > 0 ? custom.toString()
-                    : !reported.isEmpty() && state == TvInputManager.INPUT_STATE_CONNECTED ? reported : "HDMI " + number;
-            String symbol = state == TvInputManager.INPUT_STATE_CONNECTED || custom != null
-                    ? deviceSymbol(label) : "hdmi";
+                    : !reported.isEmpty() && connected ? reported : "HDMI " + number;
+            String symbol = connected || custom != null ? deviceSymbol(label) : "hdmi";
             Item it = shortcut(INPUT, "hdmi" + number, label, symbol);
             it.inputId = info.getId();
             it.number = String.valueOf(number);
-            it.connected = state == TvInputManager.INPUT_STATE_CONNECTED;
+            it.connected = connected;
             out.add(it);
         }
         Collections.sort(out, (a, b) -> a.number.compareTo(b.number));
-        // Allwinner's player opens only HDMI 1 (HY300: one port, though the board lists three)
-        if (allwinnerInputs(c)) out.removeIf(it -> !"1".equals(it.number));
+        // Allwinner's player opens only HDMI 1 (HY300 and HY320: one port, though the board lists three)
+        if (allwinner) out.removeIf(it -> !"1".equals(it.number));
         // MIUI TV knows three HDMI ports; a board reporting a fourth leaves it with no way to be opened (a Redmi TV
         // lists HDMI 4 and answers no number for it), so it isn't shown.
         else if (xiaomiInputs(c)) out.removeIf(it -> !xiaomiPort(it));
         return out;
     }
 
-    /** Allwinner's live TV player (HY300 projectors), the stock home screen's way to HDMI: it ignores the input asked for. */
+    /** Allwinner's live TV player (HY300 and HY320 projectors), the stock home screen's way to HDMI. */
     private static final ComponentName ALLWINNER_TV = new ComponentName("com.softwinner.awlivetv", "com.softwinner.awlivetv.MainActivity");
     /** Xiaomi's own source player (MIUI TV, the Chinese firmware): it takes the port as a number of its own. */
     private static final ComponentName XIAOMI_SOURCES = new ComponentName("com.xiaomi.mitv.tvplayer", "com.xiaomi.mitv.tvplayer.ExternalSourceActivity");
@@ -475,10 +480,14 @@ final class HomeApps {
 
     /**
      * How to open an HDMI input: the standard passthrough request, or, where no app answers it, the maker's own
-     * player. Xiaomi's takes the port as its own "input" number.
+     * player. Allwinner's takes the port in "input_source" ("HDMI1"); Xiaomi's takes it as its own "input" number.
      */
     private static Intent inputIntent(Context c, Item it) {
-        if (allwinnerInputs(c)) return new Intent().setComponent(ALLWINNER_TV);
+        if (allwinnerInputs(c)) {
+            // Its own player switches the port when the intent names it ("HDMI1"), as its source picker does. The
+            // HY320 needs it; the HY300 ignores it and opens its only port anyway.
+            return new Intent().setComponent(ALLWINNER_TV).putExtra("input_source", "HDMI" + it.number);
+        }
         if (xiaomiInputs(c) && xiaomiPort(it)) {
             return new Intent(XIAOMI_SOURCES_ACTION).setComponent(XIAOMI_SOURCES)
                     .putExtra("input", XIAOMI_HDMI[port(it) - 1]);
