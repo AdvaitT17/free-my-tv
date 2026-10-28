@@ -40,10 +40,16 @@ final class RemoteKeys {
     static final boolean TCL = is("TCL"), VESTEL = is("Vestel"), KTC = is("KTC"), SONY = is("Sony"), FORMOVIE = is("Formovie"),
             HISENSE = is("Hisense");
     /**
+     * Xiaomi TVs whose remote has a Home button and hands every app button to Xiaomi's receiver, which stays on
+     * (MiTV-AXSO2, Amlogic, Android TV 11 tested): only the PatchWall button (BUTTON_5) is ours, left to the TV until an
+     * app is picked. By model name, since the other buttons' codes were not checked on this remote.
+     */
+    static final boolean XIAOMI_PATCHWALL_ONLY = is("Xiaomi") && Build.MODEL.equals("MiTV-AXSO2");
+    /**
      * Xiaomi TVs (models MiTV-M…; MiTV-MSSP3, MediaTek, Android TV 9 tested). Not the Mi Box or Mi TV Stick, the slowest
      * devices we run on, whose remotes have a Home button; Formovie's Xiaomi projectors have their own remote.
      */
-    static final boolean XIAOMI = is("Xiaomi") && !FORMOVIE && Build.MODEL.startsWith("MiTV-M");
+    static final boolean XIAOMI = is("Xiaomi") && !FORMOVIE && (Build.MODEL.startsWith("MiTV-M") || XIAOMI_PATCHWALL_ONLY);
     /** Brands whose Netflix button is STEM_1, a global key (MediaTek): only that button is ours. */
     static final boolean STEM_NETFLIX = VESTEL || FORMOVIE;
     /**

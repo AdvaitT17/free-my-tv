@@ -328,6 +328,11 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   VK, `_16` for Rutube, `_11` for KION, `_10` for Wink and `_12` for IVI, global keys for Xiaomi's hot-key receiver
   (`com.xiaomi.android.tvsetup.partnercustomizer`, its log: "dealWithHotkey keycode:199"). "Xiaomi default" (empty)
   leaves the key to the TV.
+  The MiTV-AXSO2 (Amlogic `txlx`, Android TV 11, India; its home screen is `tvlauncher`, not `launcherx`) has a Home
+  button, and `dumpsys window policy` hands `BUTTON_2` to `_7` and `_15` to that same receiver, which stays on, so its
+  app buttons keep working without the service. Only its PatchWall button is listed (`RemoteKeys.XIAOMI_PATCHWALL_ONLY`,
+  by model name): Linux key 400 (`KEY_YELLOW`, `Vendor_2717_Product_32b9.kl`) → `BUTTON_5`, left to the TV until an
+  app is picked. Its other buttons' codes weren't matched to the remote, so none of them is ours.
   Hisense (Q6N, MediaTek, Android TV 12 tested) sends `295` for Prime Video, `KEYCODE_BUTTON_3` for YouTube,
   `KEYCODE_ALL_APPS` for its All Apps (3×3) button, `KEYCODE_NOTIFICATION` for the gear and `KEYCODE_PROFILE_SWITCH`
   for the profile button, all global keys for Google TV's home app (`launcherx`), which Free My TV mode turns off, and
