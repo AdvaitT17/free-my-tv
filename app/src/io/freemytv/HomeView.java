@@ -500,12 +500,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         click.release();
     }
 
-    /** Starting state (Home pressed while the home screen is showing): first app focused, drawer and sheet closed. */
+    /**
+     * Starting state (Home pressed while the home screen is showing): first app focused, the first tab at its first
+     * pick, drawer and sheet closed.
+     */
     void reset(boolean animated) {
         wake();
         cancelReorder(!animated);
         zone = Z_SHELF;
         shelfIndex = 0;
+        cardIndex = 0;
         sheetOpen = false;
         drawerOpen = false;
         if (animated) {
@@ -3055,6 +3059,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void selectTab(int index) {
         if (index == tab) return;
         tab = index;
+        // A tab opens at its first pick, its row at the start: at once, as sliding back would first show the new
+        // tab's cards scrolled to where the last tab was.
+        cardIndex = 0;
+        aim(cardOpen, 0, true);
+        cardScroll.snap(0);
         updateCards();
         heroDirty = true;
     }
