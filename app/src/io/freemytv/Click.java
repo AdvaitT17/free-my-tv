@@ -61,7 +61,7 @@ final class Click {
     void release() {
         SoundPool p = pool;
         pool = null;
-        if (p != null) p.release();
+        if (p != null) handler.post(p::release);   // after the plays already queued, never during one
         thread.quitSafely();
     }
 
