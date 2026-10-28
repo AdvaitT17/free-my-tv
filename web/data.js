@@ -132,17 +132,14 @@ var Data = (function () {
 
   /**
    * Open-Meteo, over plain http where https fails: its certificate chains to Let's Encrypt's ISRG root, which 2015 and
-   * 2016 TVs (Tizen 2.3 and 2.4) don't trust. Only the city's coordinates and the forecast go in the clear.
+   * 2016 TVs (Tizen 2.3 and 2.4) don't trust. Only the city's coordinates and the forecast go in the clear. Each call
+   * tries https first, so a newer TV whose request once timed out doesn't stay on http.
    */
-  var meteoScheme = 'https://';
   function getMeteo(path, done) {
-    get(meteoScheme + path, {}, function (err, body) {
+    get('https://' + path, {}, function (err, body) {
       // A certificate the TV doesn't trust ends as a network error: status 0, or onerror.
-      if (err && /^(no connection|HTTP 0)$/.test(err.message) && meteoScheme === 'https://') {
-        get('http://' + path, {}, function (err2, body2) {
-          if (!err2) meteoScheme = 'http://';
-          done(err2, body2);
-        });
+      if (err && /^(no connection|HTTP 0)$/.test(err.message)) {
+        get('http://' + path, {}, done);
         return;
       }
       done(err, body);
