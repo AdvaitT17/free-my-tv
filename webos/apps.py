@@ -151,10 +151,15 @@ def fetch_icon(ip, url, folder, app_id):
         return ''
     parts = urllib.parse.urlsplit(url)
     ext = os.path.splitext(parts.path)[1].lower()
-    if parts.scheme != 'http' or parts.hostname != ip or ext not in IMAGE_KINDS:
+    if parts.scheme not in ('http', 'https') or parts.hostname != ip or ext not in IMAGE_KINDS:
         return ''
+    ctx = None
+    if parts.scheme == 'https':   # port 3001 serves them with the TV's own certificate
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
     try:
-        with urllib.request.urlopen(url, timeout=10) as r:
+        with urllib.request.urlopen(url, timeout=10, context=ctx) as r:
             if not r.headers.get('Content-Type', 'image/').startswith('image/'):
                 return ''
             data = r.read()
