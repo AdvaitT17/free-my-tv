@@ -1281,7 +1281,14 @@
   function selectTab(i) {
     if (i === st.tab) return;
     st.tab = i;
+    // A tab opens at its first pick, its row at the start: at once, as on Android, not sliding from the last tab's place.
+    st.card = 0;
+    var holder = $('cards');
+    holder.style.webkitTransition = holder.style.transition = 'none';
     renderCards();
+    layoutCards();   // renderCards returns early when this tab's picks are the same
+    void holder.offsetWidth;   // the row is laid out where it lands before the slide comes back
+    holder.style.webkitTransition = holder.style.transition = '';
   }
 
   function move(dx, dy) {
@@ -1540,13 +1547,14 @@
     });
   }
 
-  /** Back to the home screen (the app was opened again): the shelf, everything closed, the first tab. */
+  /** Back to the home screen (the app was opened again): the shelf, everything closed, the first tab at its first pick. */
   function reset() {
     hideSaver();
     closeSheets();
     st.zone = Z.SHELF;
     st.shelf = 0;
-    if (st.tab !== 0) { st.tab = 0; renderCards(); }
+    st.card = 0;
+    selectTab(0);
     updateFocus();
     restInDrawer();   // drawer_first: out again at once, not only after the TV lists its apps
   }

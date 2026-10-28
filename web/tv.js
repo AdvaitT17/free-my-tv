@@ -12,6 +12,8 @@ var TV = (function () {
   var samsung = !webos && typeof window.tizen !== 'undefined' && !!window.tizen.application;
   var calls = [];   // a bridge is collected if nothing holds it before its reply arrives
   var tizen2 = samsung && /Tizen 2\./.test(navigator.userAgent);
+  // 2017 and 2018 Samsungs (Tizen 3 and 4) freeze opening their settings from an app (MU6100, MU6122, NU7400, #257).
+  var tizen34 = samsung && /Tizen [34]\./.test(navigator.userAgent);
   // Tizen 2 (2016 TVs, WebKit 538) repaints every shadow on every frame of a focus animation: home.css turns them off.
   // So do TVs under 2 GB that draw the page at twice its size (an LG on webOS TV Lite 10, MT5889, 1.3 GB, ratio 2:
   // 23-28 fps moving along the shelf, 60 with lite; shadows off alone, 45). deviceMemory rounds down to 1 under 2 GB on
@@ -170,6 +172,17 @@ var TV = (function () {
     'AprZAARz4r.Jellyfin': 'icons/jellyfin.svg'
   };
 
+  // The same logos by name (lowercase letters and digits only), for app ids the list above doesn't know: older TVs
+  // (a 2016 KU6300, Tizen 2.4) can carry other ids for the same apps.
+  var SAMSUNG_ICON_NAMES = {
+    youtube: 'icons/youtube.png', primevideo: 'icons/prime.png', amazonprimevideo: 'icons/prime.png',
+    netflix: 'icons/netflix.svg', max: 'icons/max.svg', hbomax: 'icons/max.svg', spotify: 'icons/spotify.svg',
+    deezer: 'icons/deezer.svg', youtubekids: 'icons/youtubekids.svg', redbulltv: 'icons/redbull.svg', ted: 'icons/ted.svg',
+    steamlink: 'icons/steam.svg', jellyfin: 'icons/jellyfin.svg', paramount: 'icons/paramountplus.svg',
+    paramountplus: 'icons/paramountplus.svg', crunchyroll: 'icons/crunchyroll.svg', twitch: 'icons/twitch.svg',
+    plex: 'icons/plex.svg', appletv: 'icons/appletv.svg'
+  };
+
   // Names Smart Hub gets wrong: HBO's app has none (so it never reached the shelf), others are long or old.
   var SAMSUNG_TITLES = {
     'NvZ26VG9Yw.HBOGOLAG': 'Max',
@@ -262,16 +275,54 @@ var TV = (function () {
   function samsungApp(a) {
     var icon = a.iconPath || '';
     if (icon && icon.indexOf('://') < 0) icon = 'file://' + icon;
-    if (SAMSUNG_ICONS[a.id]) icon = SAMSUNG_ICONS[a.id];
-    return {id: a.id, title: SAMSUNG_TITLES[a.id] || a.name || a.id, icon: icon, color: ''};
+    var title = SAMSUNG_TITLES[a.id] || a.name || a.id;
+    // Older Smart Hubs (a 2015 JU6075) still list Amazon's app under its old name, with another id.
+    if (/^Amazon( Instant)? Video$/i.test(title)) title = 'Prime Video';
+    var key = String(title).toLowerCase().replace(/[^a-z0-9]/g, '');
+    var byName = Object.prototype.hasOwnProperty.call(SAMSUNG_ICON_NAMES, key) ? SAMSUNG_ICON_NAMES[key] : '';
+    if (SAMSUNG_ICONS[a.id] || byName) icon = SAMSUNG_ICONS[a.id] || byName;
+    var dial = key === 'netflix' ? 'Netflix' : key === 'youtube' ? 'YouTube' : /^(amazon)?primevideo$/.test(key) ? 'Amazon' : '';
+    if (dial) samsungDial[a.id] = dial;
+    return {id: a.id, title: title, icon: icon, color: ''};
+  }
+
+  /**
+   * Built-in apps whose id starts with a number (11101200001.Netflix, 111299001912.YouTube and
+   * 111299001578.Amazon_Video on a 2015 JU6075, Tizen 2.3) are native, and tizen.application.launch doesn't open them;
+   * the TV's own DIAL server, which phones cast through, does.
+   */
+  var samsungDial = {}, NATIVE = /^\d+(\.|$)/;
+
+  function dialLaunch(name, done) {
+    var x = new XMLHttpRequest(), over = false;
+    x.open('POST', 'http://127.0.0.1:8001/ws/apps/' + name, true);
+    x.timeout = 8000;
+    x.onreadystatechange = function () {
+      if (x.readyState !== 4 || over) return;
+      over = true;
+      if (done) done(x.status === 200 || x.status === 201);
+    };
+    x.ontimeout = x.onerror = function () { if (!over) { over = true; if (done) done(false); } };
+    x.setRequestHeader('Content-Type', 'text/plain; charset=utf-8');
+    x.send('');
   }
 
   function samsungLaunch(id, done) {
-    try {
-      window.tizen.application.launch(id, function () { if (done) done(true); }, function () { if (done) done(false); });
-    } catch (e) {
-      if (done) done(false);
+    var dial = samsungDial[id];
+    function launch(otherwise) {
+      try {
+        window.tizen.application.launch(id, function () { if (done) done(true); }, otherwise);
+      } catch (e) {
+        otherwise();
+      }
     }
+    function failed() { if (done) done(false); }
+    // A native id: DIAL first (launch doesn't open those on Tizen 2.3), and launch where DIAL doesn't answer.
+    if (dial && NATIVE.test(id)) {
+      dialLaunch(dial, function (ok) { if (ok) { if (done) done(true); } else launch(failed); });
+      return;
+    }
+    launch(dial ? function () { dialLaunch(dial, done); } : failed);
   }
 
   /**
@@ -426,9 +477,10 @@ var TV = (function () {
 
     /**
      * Whether an app can open the TV's settings. Not on Tizen 2 (a 2016 KU6300): the "settings" request and
-     * org.tizen.menu both answer success and nothing shows, and the remote API ignores MENU and HOME.
+     * org.tizen.menu both answer success and nothing shows, and the remote API ignores MENU and HOME. Nor on Tizen 3
+     * and 4, where org.tizen.menu freezes the TV (#257): the remote's own Settings button still works there.
      */
-    canOpenSettings: !tizen2,
+    canOpenSettings: !tizen2 && !tizen34,
 
     /** Installed apps, as the TV's launcher lists them: [{id, title, icon, color}]. */
     apps: function (done) {

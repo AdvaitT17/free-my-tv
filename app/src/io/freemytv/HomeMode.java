@@ -75,7 +75,6 @@ final class HomeMode {
         "com.google.android.play.games", "com.google.android.youtube.tvmusic",        // Play Games, YouTube Music
         // TCL
         "com.tcl.magiconnectfree", "com.tcl.miracast",                                // screen mirroring apps
-        "com.tcl.waterfall.overseas", "com.tcl.channelplus",                          // TCL Channel and its Live TV
         "com.tcl.messagebox", "com.tcl.usercenter",                                   // TCL messages and account
         "com.tcl.exhibit", "com.tcl.esticker", "com.tcl.hotelmenu",                   // store demo, hotel menu
         "com.tcl.repairguide", "com.tcl.ocean.instructions", "com.tcl.logkit",        // repair guide, manual, logs
@@ -115,6 +114,10 @@ final class HomeMode {
         "com.tcl.settings", "com.tcl.common.shortcutmenu", "com.tcl.inputmethod.international", "com.tcl.android.webview",
         "com.tcl.wifi.resources.overlay", "com.tcl.partnercustomizer", "com.tcl.tv.tclhome_passive",
         "com.tcl.keycustomfunctionservice",                                           // remote keys; a fallback home too
+        // Hotack X1BR projector (LuminaOS, Android 14): its home, settings, Wi-Fi, Bluetooth and keystone in one (#342)
+        "com.htc.luminaos",
+        "com.tcl.channelplus",                                                        // the channel source TCL's Live TV tunes (off: black screen)
+        "com.tcl.waterfall.overseas",                                                 // TCL Channel: partnercustomizer's entry and key open it
         "com.google.android.gms", "com.google.android.gsf", "com.android.vending", "com.google.android.apps.mediashell",
         "com.google.android.tv.remote.service", "com.google.android.inputmethod.latin", "com.google.android.webview",
         "com.android.tv.settings", "com.android.systemui", "android", PKG,
@@ -231,6 +234,8 @@ final class HomeMode {
 
     /** Asks the main process to switch (the settings screen calls this). */
     static void request(Context c, String mode) {
+        // Back to Free My TV before Original's revoke ran: it would stop the app mid-switch, and isn't wanted any more.
+        if (FREE.equals(mode)) ModeJob.cancel(c, ModeJob.REVOKE_WATCH);
         ModeJob.schedule(c, ModeJob.APPLY, mode, 0);
     }
 
@@ -427,7 +432,11 @@ final class HomeMode {
             // Off now and not on our list: the person turned it off, unless an earlier install of Free My TV did (its
             // list lives in the TV's settings too, since an uninstall erases our state file).
             Set<String> ours = recorded(adb);
-            for (String pkg : packages(adb, "-d")) {
+            Set<String> offNow = packages(adb, "-d");
+            // A reinstall starts from a fresh state: only the TV's record knows what an older version turned off that's
+            // no longer on the list. One that won't turn on stays recorded, so Original tries again.
+            disabled.addAll(offTheList(adb, ours, offNow, packageOf(home)));
+            for (String pkg : offNow) {
                 if (targets(home, dream, true).contains(pkg) && !disabled.contains(pkg) && !ours.contains(pkg)) keptOff.add(pkg);
             }
             keptOff.removeAll(ours);
@@ -556,6 +565,7 @@ final class HomeMode {
             done(c, null);
             homeAfter(adb);
             ModeJob.schedule(c, ModeJob.MEMORY, ORIGINAL, 120_000);
+            if (WatchNext.allowed(c)) ModeJob.schedule(c, ModeJob.REVOKE_WATCH, null, 5_000);
         } catch (Exception e) {
             done(c, Ui.trf("Couldn't go back to the original: {error}", "error", e.getMessage()));
         }
@@ -705,6 +715,11 @@ final class HomeMode {
                 }
                 for (String pkg : sorted(wanted)) if (!order.contains(pkg)) order.add(pkg);
                 Set<String> disabled = new HashSet<>(stringList(s, "disabled"));
+                Set<String> gone = new HashSet<>(disabled);
+                offTheList(adb, disabled, disabledNow, homePkg);
+                gone.removeAll(disabled);
+                wanted.removeAll(gone);
+                order.removeAll(gone);
                 // screensaver=false after a switch with ours: the TV's own screensaver app comes back on.
                 String dreamPkg = packageOf(dream);
                 if (!Config.SCREENSAVER && dreamPkg != null && disabled.remove(dreamPkg)) {
@@ -863,6 +878,44 @@ final class HomeMode {
         if (!pkg.matches("[\\w.]*")) pkg = "";
         adb.shell("setprop " + JM_HOME + " '" + pkg + "'");
         return pkg.equals(jmHome(adb));
+    }
+
+    // MARK: - Continue Watching's permission
+
+    /**
+     * Continue Watching reads Android TV's Watch Next list, which needs READ_TV_LISTINGS. It is granted only when you
+     * pick Continue Watching (Home Settings asks this from :home), through the TV's own ADB so the TV doesn't ask;
+     * if that fails, Home Settings falls back to Android's own permission dialog.
+     */
+    static void requestWatchGrant(Context c) {
+        ModeJob.schedule(c, ModeJob.GRANT_WATCH, null, 0);
+    }
+
+    static void grantWatchNow(Context app) {
+        if (WatchNext.allowed(app)) return;
+        try (Adb adb = Adb.connect(app, 8_000, null)) {
+            adb.shell("pm grant " + PKG + " " + WatchNext.PERMISSION);
+            AppLog.w("continue watching permission " + (WatchNext.allowed(app) ? "granted" : "not granted"));
+        } catch (IOException e) {
+            AppLog.w("continue watching permission: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Original takes the permission back. Android stops the app's processes when a permission is revoked, so this runs
+     * as its own job once the switch is over (if the job is run again after that, it finds nothing left to revoke). It
+     * holds the switch lock, so a switch never runs under it, and does nothing if Free My TV is back by then.
+     */
+    static void revokeWatchNow(Context app) {
+        synchronized (RUN) {
+            if (!WatchNext.allowed(app) || !ORIGINAL.equals(state(app).optString("mode", ORIGINAL))) return;
+            try (Adb adb = Adb.connect(app, 10_000, null)) {
+                AppLog.w("continue watching permission: revoking");
+                adb.shell("pm revoke " + PKG + " " + WatchNext.PERMISSION);
+            } catch (IOException e) {
+                AppLog.w("continue watching permission: " + e.getMessage());
+            }
+        }
     }
 
     /** Whether Google TV's setup app is one of the home screens (its RecoveryActivity), so it must go off too. */
@@ -1141,6 +1194,33 @@ final class HomeMode {
             AppLog.w("could not read the record of what we turned off: " + e.getMessage());
         }
         return out;
+    }
+
+    /**
+     * Turned off by an earlier version and protected now (TCL's Live TV source and TCL Channel): back on, and out of
+     * {@code record} (with {@code offNow}). Only those: one that is merely not a target this time (the old home screen
+     * after a reinstall that recorded another) stays as it is, since turned on here it could take the Home button.
+     * Never Google TV's setup app or the TV's home screen here. Returns the ones still off that wouldn't turn on; they
+     * stay in {@code record}.
+     */
+    private static Set<String> offTheList(Adb adb, Set<String> record, Set<String> offNow, String homePkg)
+            throws IOException {
+        Set<String> stuck = new HashSet<>();
+        for (String pkg : sorted(record)) {
+            if (pkg.equals(GOOGLE_SETUP) || pkg.equals(homePkg) || mayTurnOff(pkg)) continue;
+            if (!offNow.contains(pkg)) {
+                AppLog.w("dropped " + pkg + " from the record: no longer on the list");
+            } else if (adb.shell("pm enable " + pkg).contains("new state: enabled")) {
+                offNow.remove(pkg);
+                AppLog.w("turned back on " + pkg + ": no longer on the list");
+            } else {
+                AppLog.w("could not turn back on " + pkg);
+                stuck.add(pkg);
+                continue;
+            }
+            record.remove(pkg);
+        }
+        return stuck;
     }
 
     private static void record(Adb adb, Set<String> disabled) {

@@ -127,7 +127,8 @@ stays, and Free My TV opens with a long press of a number key.
    denied, no `getAppLoadStatus`, and the remote control API answers `invalid origin` to file:// pages). Run
    `python3 webos/apps.py <IP>`: the TV asks them once to allow it, then build and install again. It writes
    `webos-apps.local.json` and `webos-icons.local/` (git-ignored), which only the LG build packs, never `--generic`.
-   Again after they install or remove apps.
+   Again after they install or remove apps. Where the TV resets plain connections on port 3000 (a 2024 set, #355), it
+   uses the same API over TLS on 3001, and fetches the icons over https (#357).
 
 ## Installing it on a Samsung TV (Tizen)
 
@@ -172,9 +173,12 @@ Developer Mode; Samsung's home screen stays. Two ways:
    one signed by another (uninstall first). A retail TV's sdbd only takes files (`filesync_support:push`): nothing
    can be pulled from it. To look inside the running app, `0 debug FreeMyTVio.FreeMyTV 300` over SDB opens it with
    a Web Inspector port (Runtime.evaluate works on Tizen 3; screenshots don't; Tizen 2.4 doesn't answer it, nor
-   `0 vd_applist`).
+   `0 vd_applist`). Tizen 2.3 (a 2015 UE48JU6075) answers it on port 7011, one WebSocket connection per launch
+   (`ws://<IP>:7011/devtools/page/1`; `0 kill FreeMyTVio` first to launch it again), and `0 applist` lists its web
+   apps (not the native ones, below).
 8. **Tell them:** *Autorun Last App* in the TV's settings (under Start Screen Options; where it is changes by year)
-   makes the TV turn on into Free My TV.
+   makes the TV turn on into Free My TV on a 2017 set; 2019 and 2020 sets don't reopen Developer Mode apps with it
+   (#356), so there they move it to the first place in the Home bar.
 
 ## Releases
 
@@ -235,14 +239,16 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
 `adb shell pm enable <package>` (the `DEBLOAT` list and the stock home screen), then
 `adb shell cmd package set-home-activity <stock home activity>` and
 `adb shell settings put secure screensaver_components <stock screensaver>`. On an HY300 with JmLauncher, also
-`adb shell setprop persist.sys.home.selectpkg ''`.
+`adb shell setprop persist.sys.home.selectpkg ''`. On TCL, an older version may also have turned off
+`com.tcl.channelplus` and `com.tcl.waterfall.overseas` (Live TV's channel source and TCL Channel): `pm enable` them too.
 
 ## The code
 
 - Java 8 language level, minSdk 26 (Android 8), targetSdk 33. No Gradle, no libraries: only the Android SDK.
-  Android 9 and older have no RenderNode (`Recording` wraps it, with a Picture there) and no `cmd role`. On Android 8 to 11
-  (`Ui.LEGACY`) the home screen skips the GPU layers, draws blurred shadows from cached bitmaps (`Shadows`) and
-  rounds images with a shader instead of clipPath: their GPUs (a Mi Box 3's Mali-450) choked on those.
+  Android 9 and older have no RenderNode (`Recording` wraps it, with a Picture there) and no `cmd role`. On Android 8 to 11,
+  and on Android 12 and 12L under 3 GB of RAM (`Ui.LEGACY`), the home screen skips the GPU layers, draws blurred
+  shadows from cached bitmaps (`Shadows`) and rounds images with a shader instead of clipPath: their GPUs (a Mi Box
+  3's Mali-450) choked on those, and a 2 GB TCL on Android 12 went into swap with the layers (#361).
   Android 11 to 12L (API 30–32) run the screensaver as `ScreensaverAlone`, in the main process: AOSP starts their
   DreamActivity in the app's default process (13 moved it to the dream's own), and it only works with the dream in that
   process, which can't also hold a home activity (a Sony BRAVIA VH22 on Android 12 crashed with it in `:home`, #94).
@@ -277,6 +283,11 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   saving it. Never log it. Nothing may escape KeyPage's threads: `:home`'s watchdog counts it as a home screen crash.
   On LG and Samsung it's typed in Home Settings (no QR: a web app can't serve a page): `Prefs.tmdbKey()` (localStorage)
   wins over `CONFIG.tmdbKey`, and `Data.keyChanged()` fetches the picks again.
+- Continue Watching gets `READ_TV_LISTINGS` with `pm grant` through the TV's own ADB only when picked in Home Settings;
+  *Original* revokes it with `pm revoke`. Watch Next pictures load only from the TV (`content://`, `android.resource://`),
+  never from the network. The app talks only to TMDB, Open-Meteo, Binance, Watchmode (with a `watchmode_key`), your Plex
+  server (with a `plex_url`) and GitHub's releases (Updates): new sources (such as Stremio) must not add network calls
+  without the owner's OK.
 - On-screen text: `Ui.tr("English")`, translated from `app/assets/i18n/<lang>.json` (keyed by the English; one
   HashMap lookup, English when a language lacks it). Text built at runtime is a pattern: `Ui.trf("{n} min ago", "n", 12)`,
   never concatenated words. A key `"context|Text"` is the same English where a language may need another word
@@ -349,6 +360,11 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   VK, `_16` for Rutube, `_11` for KION, `_10` for Wink and `_12` for IVI, global keys for Xiaomi's hot-key receiver
   (`com.xiaomi.android.tvsetup.partnercustomizer`, its log: "dealWithHotkey keycode:199"). "Xiaomi default" (empty)
   leaves the key to the TV.
+  The MiTV-AXSO2 (Amlogic `txlx`, Android TV 11, India; its home screen is `tvlauncher`, not `launcherx`) has a Home
+  button, and `dumpsys window policy` hands `BUTTON_2` to `_7` and `_15` to that same receiver, which stays on, so its
+  app buttons keep working without the service. Only its PatchWall button is listed (`RemoteKeys.XIAOMI_PATCHWALL_ONLY`,
+  by model name): Linux key 400 (`KEY_YELLOW`, `Vendor_2717_Product_32b9.kl`) → `BUTTON_5`, left to the TV until an
+  app is picked. Its other buttons' codes weren't matched to the remote, so none of them is ours.
   Hisense (Q6N, MediaTek, Android TV 12 tested) sends `295` for Prime Video, `KEYCODE_BUTTON_3` for YouTube,
   `KEYCODE_ALL_APPS` for its All Apps (3×3) button, `KEYCODE_NOTIFICATION` for the gear and `KEYCODE_PROFILE_SWITCH`
   for the profile button, all global keys for Google TV's home app (`launcherx`), which Free My TV mode turns off, and
@@ -384,6 +400,14 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   or zoom crashes it (`SecurityException`: SurfaceFlinger doesn't know the Allwinner request code 1050): their own is
   `com.softwinner.tcorrection/.projection.ProjectionSettingActivity`, which the Keystone shortcut opens where it's
   installed.
+  HY300 Pro+ (Rockchip rk3566, Android 14 tested; product `rk3566_rgo`) has no `launcherapps` system service
+  (`service check launcherapps`: not found), so `LauncherApps.registerCallback` throws a NullPointerException and
+  `HomeView` now catches it: the shelf doesn't refresh by itself after an install there, only when the home screen
+  opens again. Its stock home is `com.htc.magcubicos`, which also holds the Wi-Fi, Bluetooth and projection settings
+  (nothing answers `android.settings.SETTINGS` in Free My TV mode). Its own "ADB debug" switch turns on Wireless
+  debugging, TLS-only on 5555, with no pairing screen in its settings: `com.android.tv.settings` (Activity Launcher,
+  from F-Droid) has one. After pairing, `adb tcpip 5555` and Wireless debugging off leave classic adb on 5555, until
+  the next restart.
 - Xiaomi's Chinese firmware (MIUI TV; Redmi `MiTV-MFTP0`, Android 9 tested) has no passthrough handler either: its own
   `com.xiaomi.mitv.tvplayer/.ExternalSourceActivity` (action `com.xiaomi.mitv.tvplayer.EXTSRC_PLAY`) opens a port from
   an `input` extra (HDMI 1 to 3 are 23 to 25; there is no number for a fourth), so `inputs` keeps HDMI 1 to 3 there.
@@ -405,7 +429,14 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   and opacity animate. Tizen 2.4 (2016) runs WebKit 538: no Intl (`fmt` in data.js rounds by hand), SVGs need a width
   and height, and `tv.js` adds a `lite` class there that turns off shadows and transitions, which its GPU can't keep up
   with (TVs under 2 GB that draw the page at twice its size get it too, `navigator.deviceMemory` and `devicePixelRatio`: an LG on webOS TV Lite went from 25 to 60 fps); it also
-  can't open the TV's settings (`TV.canOpenSettings`). `web/tv.js` is the
+  can't open the TV's settings (`TV.canOpenSettings`). Without Intl, `toLocaleDateString` ignores its options and
+  writes the whole date, so `strings.js` takes weekday and month names from the catalogues there (`I18N.dateNames` in
+  data.js: `weekday|`, `month|` and `monthday|` keys, the last in the form next to a day). Tizen 2.3 and 2.4 don't
+  trust Let's Encrypt's ISRG root, so Open-Meteo falls back to plain http there (`getMeteo`; only coordinates and the
+  forecast go in the clear). On Tizen 2.3 (2015) Netflix, YouTube and Amazon are native apps whose ids start with a
+  number (`11101200001.Netflix`, `111299001912.YouTube`, `111299001578.Amazon_Video`, listed as "Amazon Video"):
+  `tizen.application.launch` doesn't open them, the TV's DIAL server does (`POST http://127.0.0.1:8001/ws/apps/<name>`,
+  `dialLaunch`). `web/tv.js` is the
   TV's side: on LG, Luna (`listLaunchPoints`, `launch`, the inputs; where webOS 6 and newer deny `listLaunchPoints`
   to Developer Mode apps, the list comes from the TV's remote control API on `ws://127.0.0.1:3000` once the TV has
   allowed it (it asks once; a "no" isn't asked again; firmware that gives the page its own origin,
@@ -417,7 +448,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   data is unreliable: on Tizen 3 no app's `iconPath` loads (on Tizen 4 and 5, YouTube's and Prime Video's are a
   placeholder), so logos are bundled in `web/icons/` and keyed by app id in `SAMSUNG_ICONS` (SVGs need a width and
   height for old WebKit); some names are empty or long (`SAMSUNG_TITLES`); and Tizen 3 answers no "settings" app
-  control, so TV Settings opens `org.tizen.menu`.
+  control, and `org.tizen.menu` froze 2017 and 2018 TVs (Tizen 3 and 4, #257), so TV Settings only shows from
+  Tizen 5 (`TV.canOpenSettings`).
   `web/home.js` follows `HomeView`'s layout and behavior, so a design change on
   Android belongs there too. Text: the same catalogues as Android, packed into `i18n.js` by `tools/webapp.py` (only
   the keys `web/` uses): `tr('Live TV')`, `trf('{n} min ago', {n: 12})`, `plural('plural|…', n)` and
