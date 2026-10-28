@@ -433,7 +433,7 @@ final class HomeMode {
             Set<String> offNow = packages(adb, "-d");
             // A reinstall starts from a fresh state: only the TV's record knows what an older version turned off that's
             // no longer on the list. One that won't turn on stays recorded, so Original tries again.
-            disabled.addAll(offTheList(adb, ours, offNow, targets(home, dream, true), packageOf(home)));
+            disabled.addAll(offTheList(adb, ours, offNow, packageOf(home)));
             for (String pkg : offNow) {
                 if (targets(home, dream, true).contains(pkg) && !disabled.contains(pkg) && !ours.contains(pkg)) keptOff.add(pkg);
             }
@@ -714,7 +714,7 @@ final class HomeMode {
                 for (String pkg : sorted(wanted)) if (!order.contains(pkg)) order.add(pkg);
                 Set<String> disabled = new HashSet<>(stringList(s, "disabled"));
                 Set<String> gone = new HashSet<>(disabled);
-                offTheList(adb, disabled, disabledNow, targets(home, dream, true), homePkg);
+                offTheList(adb, disabled, disabledNow, homePkg);
                 gone.removeAll(disabled);
                 wanted.removeAll(gone);
                 order.removeAll(gone);
@@ -1195,15 +1195,17 @@ final class HomeMode {
     }
 
     /**
-     * Turned off by an earlier version, now protected or off the list (TCL's Live TV source and TCL Channel): back on,
-     * and out of {@code record} (with {@code offNow}). Never Google TV's setup app or the TV's home screen here: their
-     * order is the switch's. Returns the ones still off that wouldn't turn on; they stay in {@code record}.
+     * Turned off by an earlier version and protected now (TCL's Live TV source and TCL Channel): back on, and out of
+     * {@code record} (with {@code offNow}). Only those: one that is merely not a target this time (the old home screen
+     * after a reinstall that recorded another) stays as it is, since turned on here it could take the Home button.
+     * Never Google TV's setup app or the TV's home screen here. Returns the ones still off that wouldn't turn on; they
+     * stay in {@code record}.
      */
-    private static Set<String> offTheList(Adb adb, Set<String> record, Set<String> offNow, List<String> all, String homePkg)
+    private static Set<String> offTheList(Adb adb, Set<String> record, Set<String> offNow, String homePkg)
             throws IOException {
         Set<String> stuck = new HashSet<>();
         for (String pkg : sorted(record)) {
-            if (pkg.equals(GOOGLE_SETUP) || pkg.equals(homePkg) || (mayTurnOff(pkg) && all.contains(pkg))) continue;
+            if (pkg.equals(GOOGLE_SETUP) || pkg.equals(homePkg) || mayTurnOff(pkg)) continue;
             if (!offNow.contains(pkg)) {
                 AppLog.w("dropped " + pkg + " from the record: no longer on the list");
             } else if (adb.shell("pm enable " + pkg).contains("new state: enabled")) {
