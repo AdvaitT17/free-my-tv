@@ -195,6 +195,11 @@ final class HomeMode {
     /** Factory and service menus, on any brand ("com.tcl.factory.view", "com.cvte.tv.fac.aging", "mediatek.factorymenu.ui"). */
     private static final Pattern FACTORY = Pattern.compile("(.*\\.)?(factory|factorymenu|facmenu|fac|hkcfac|testpq)(\\..*)?");
 
+    /** A factory or service menu: never turned off, and never listed with the TV's own apps (HomeApps.launchable). */
+    static boolean factoryMenu(String pkg) {
+        return FACTORY.matcher(pkg).matches();
+    }
+
     /** Checked before every disable: never the protected list, Amazon's packages, Android's own pieces or a factory menu. */
     private static boolean mayTurnOff(String pkg) {
         return !PROTECTED.contains(pkg) && !pkg.startsWith("com.amazon.")

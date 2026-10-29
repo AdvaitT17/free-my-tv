@@ -234,6 +234,14 @@ final class HomeApps {
             if (app[0].equals(c.getPackageName()) || HIDDEN.contains(app[0]) || !seen.add(app[0])) continue;
             more.add(app);
         }
+        // A system app put on the shelf while "Android apps" was on keeps its row after it's turned off, so it can come
+        // off again (and doesn't hold a place toward the limit with no row).
+        for (String pkg : shelfPackages(c)) {
+            Intent launch = launchIntent(pm, pkg);
+            if (launch == null || pkg.equals(c.getPackageName()) || !seen.add(pkg)) continue;
+            ResolveInfo ri = pm.resolveActivity(launch, 0);
+            more.add(new String[] {pkg, ri != null ? String.valueOf(ri.loadLabel(pm)) : pkg});
+        }
         Collections.sort(more, (a, b) -> a[1].toLowerCase(Locale.ROOT).compareTo(b[1].toLowerCase(Locale.ROOT)));
         out.addAll(more);
         return out;
@@ -725,7 +733,9 @@ final class HomeApps {
         for (ResolveInfo ri : pm.queryIntentActivities(phone, 0)) {
             String pkg = ri.activityInfo.packageName;
             boolean systemApp = (ri.activityInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
-            if ((systemApp && !androidApps && !SYSTEM_SHOWN.contains(pkg)) || !seen.add(pkg)) continue;
+            // Even with "Android apps" on, never a factory or service menu (one OK there can reset the TV).
+            if (systemApp && !SYSTEM_SHOWN.contains(pkg) && (!androidApps || HomeMode.factoryMenu(pkg))) continue;
+            if (!seen.add(pkg)) continue;
             out.add(new String[] {pkg, String.valueOf(ri.loadLabel(pm))});
         }
         return out;
