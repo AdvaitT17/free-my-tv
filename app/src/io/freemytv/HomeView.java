@@ -3,8 +3,14 @@ package io.freemytv;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.LauncherApps;
 import android.content.pm.PackageManager;
@@ -18,18 +24,28 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.hardware.usb.UsbConstants;
+import android.hardware.usb.UsbDevice;
+import android.hardware.usb.UsbManager;
 import android.media.tv.TvInputManager;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.os.Build;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.os.UserHandle;
+import android.os.storage.StorageManager;
+import android.os.storage.StorageVolume;
 import android.text.Layout;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
 import android.view.Choreographer;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityManager;
@@ -102,6 +118,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final float L_TITLE_BASE = 130, L_TABBAR_TOP = 158, L_TABBAR_H = 68, L_CARDS_TOP = 262, L_CARD_H = 442;
     private static final float WATCH_GAP = 40;
     private static final float L_TALL_W = 320, L_CARD_GAP = 40, L_BUTTON = 68, L_BUTTON_GAP = 20, L_BUTTON_CY = 103;
+    private static final float L_STATUS = 25, L_STATUS_GAP = 22;
     private static final float L_PLATTER_TOP = 814, L_TILE_H = 126;
     private static final float L_DATE_BASE = 330, L_CLOCK_BASE = 540, L_WEATHER_BASE = 626, L_QUOTES_BASE = 694;
     private static final int L_INK = 0xFF1D1D1F, L_DIM = 0xFF6E6E73, L_FAINT = 0xFF8E8E93;
@@ -121,6 +138,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final long BG_FOLLOW_MS = 500;
     private final SharedPreferences ui;
     private final TvInputManager tvInputs;
+    private final ConnectivityManager connectivity;
+    private final BluetoothAdapter bluetooth;
+    private final UsbManager usb;
+    private boolean networkRegistered, devicesRegistered, mediaRegistered;
+    private int network;   // 0 = not connected, 1 = Wi-Fi, 2 = Ethernet
+    private boolean bluetoothConnected, usbConnected;
+    /** The status layer spans the screen while the icons are on (they sit at the left); off, it keeps its old width. */
+    private boolean statusWide;
     private final Spoken spoken = new Spoken(this, new Spoken.Source() {
         @Override public void items(List<Integer> out) { a11yItems(out); }
         @Override public String text(int id) { return a11yText(id); }
@@ -302,6 +327,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private String weatherLineLanguage = "";
     private long clockMinute = -1;
     private boolean okDown, backDown;
+    private float touchX, touchY;
 
     private Paint labelPaint, metaPaint, clockPaint, buttonPaint, capsuleText, tipPaint, quotePaint, staleQuote;
     private Paint rowTitle, drawerLabel, cardTitle, cardText, cardDim, cardDimRight, bigTemp, hourPaint, hourTemp, dayLow;
@@ -405,6 +431,161 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         handler.postDelayed(reloadSoon, 500);
     }
 
+    private final ConnectivityManager.NetworkCallback networkCallback = new ConnectivityManager.NetworkCallback() {
+        @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) {
+            handler.post(HomeView.this::updateNetwork);
+        }
+
+        @Override public void onLost(Network network) {
+            handler.post(HomeView.this::updateNetwork);
+        }
+    };
+
+    /** Wi-Fi or Ethernet, for the icon at the top; none when the TV has no network. */
+    private void updateNetwork() {
+        int type = 0;
+        try {
+            Network n = connectivity == null ? null : connectivity.getActiveNetwork();
+            NetworkCapabilities caps = n == null ? null : connectivity.getNetworkCapabilities(n);
+            if (caps != null) {
+                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) type = 2;
+                else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) type = 1;
+            }
+        } catch (RuntimeException ignored) {
+        }
+        if (type == network) return;
+        network = type;
+        status.invalidate();
+    }
+
+    private final BroadcastReceiver deviceCallback = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.post(HomeView.this::updateDevices);
+        }
+    };
+
+    /** The drive broadcasts, in a filter of their own (see startStatus). */
+    private final BroadcastReceiver mediaCallback = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            handler.post(HomeView.this::updateDevices);
+        }
+    };
+
+    /**
+     * Bluetooth (when something is connected) and a USB drive, for the icons at the top. Only the audio profiles count:
+     * a Bluetooth remote is always connected, and its HID connection would keep the icon on for good.
+     */
+    private void updateDevices() {
+        boolean bt = false;
+        try {
+            if (bluetooth != null && bluetooth.isEnabled()) {
+                bt = bluetooth.getProfileConnectionState(BluetoothProfile.A2DP) == BluetoothProfile.STATE_CONNECTED
+                        || bluetooth.getProfileConnectionState(BluetoothProfile.HEADSET) == BluetoothProfile.STATE_CONNECTED;
+            }
+        } catch (RuntimeException ignored) {
+        }
+        boolean drive = false;
+        try {
+            StorageManager sm = (StorageManager) getContext().getSystemService(Context.STORAGE_SERVICE);
+            if (sm != null) {
+                for (StorageVolume v : sm.getStorageVolumes()) {
+                    if (v.isRemovable() && Environment.MEDIA_MOUNTED.equals(v.getState())) {
+                        drive = true;
+                        break;
+                    }
+                }
+            }
+            if (!drive && usb != null) {
+                for (UsbDevice d : usb.getDeviceList().values()) {
+                    for (int i = 0; i < d.getInterfaceCount(); i++) {
+                        if (d.getInterface(i).getInterfaceClass() == UsbConstants.USB_CLASS_MASS_STORAGE) {
+                            drive = true;
+                            break;
+                        }
+                    }
+                    if (drive) break;
+                }
+            }
+        } catch (RuntimeException ignored) {
+        }
+        if (bt == bluetoothConnected && drive == usbConnected) return;
+        bluetoothConnected = bt;
+        usbConnected = drive;
+        status.invalidate();
+    }
+
+    /** Reads the icons' state and listens for changes only while the setting is on (nothing runs with it off). */
+    private void startStatus() {
+        if (!Prefs.statusIcons()) return;
+        updateNetwork();
+        updateDevices();
+        if (connectivity != null && !networkRegistered) {
+            try {
+                connectivity.registerDefaultNetworkCallback(networkCallback, handler);
+                networkRegistered = true;
+            } catch (RuntimeException ignored) {
+            }
+        }
+        if (!devicesRegistered) {
+            IntentFilter f = new IntentFilter();
+            f.addAction(BluetoothAdapter.ACTION_STATE_CHANGED);
+            f.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
+            f.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+            f.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+            f.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
+            f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
+            try {
+                if (Build.VERSION.SDK_INT >= 33) getContext().registerReceiver(deviceCallback, f, Context.RECEIVER_NOT_EXPORTED);
+                else getContext().registerReceiver(deviceCallback, f);
+                devicesRegistered = true;
+            } catch (RuntimeException ignored) {
+            }
+        }
+        // A mounted drive's broadcast carries a file:// URI: in the same filter as the Bluetooth actions it would make
+        // those never match (they have no data), so it gets a filter of its own.
+        if (!mediaRegistered) {
+            IntentFilter f = new IntentFilter();
+            f.addAction(Intent.ACTION_MEDIA_MOUNTED);
+            f.addAction(Intent.ACTION_MEDIA_UNMOUNTED);
+            f.addAction(Intent.ACTION_MEDIA_EJECT);
+            f.addAction(Intent.ACTION_MEDIA_REMOVED);
+            f.addDataScheme("file");
+            try {
+                if (Build.VERSION.SDK_INT >= 33) getContext().registerReceiver(mediaCallback, f, Context.RECEIVER_NOT_EXPORTED);
+                else getContext().registerReceiver(mediaCallback, f);
+                mediaRegistered = true;
+            } catch (RuntimeException ignored) {
+            }
+        }
+    }
+
+    private void stopStatus() {
+        if (connectivity != null && networkRegistered) {
+            try {
+                connectivity.unregisterNetworkCallback(networkCallback);
+            } catch (RuntimeException ignored) {
+            }
+            networkRegistered = false;
+        }
+        if (devicesRegistered || mediaRegistered) {
+            // Registered once per filter, so unregistered once per filter.
+            if (devicesRegistered) {
+                try {
+                    getContext().unregisterReceiver(deviceCallback);
+                } catch (RuntimeException ignored) {
+                }
+                devicesRegistered = false;
+            }
+            if (mediaRegistered) {
+                try {
+                    getContext().unregisterReceiver(mediaCallback);
+                } catch (RuntimeException ignored) {
+                }
+                mediaRegistered = false;
+            }
+        }
+    }
+
     private final Runnable tick = new Runnable() {
         @Override public void run() {
             if (!running) return;
@@ -431,6 +612,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         shelfVisible = HomeApps.shelfVisible(a);
         ui = a.getSharedPreferences("home-ui", Context.MODE_PRIVATE);
         tvInputs = (TvInputManager) a.getSystemService(Context.TV_INPUT_SERVICE);
+        connectivity = (ConnectivityManager) a.getSystemService(Context.CONNECTIVITY_SERVICE);
+        BluetoothManager bm = (BluetoothManager) a.getSystemService(Context.BLUETOOTH_SERVICE);
+        bluetooth = bm == null ? null : bm.getAdapter();
+        usb = (UsbManager) a.getSystemService(Context.USB_SERVICE);
         launcherApps = (LauncherApps) a.getSystemService(Context.LAUNCHER_APPS_SERVICE);
         try {
             if (launcherApps != null) launcherApps.registerCallback(packages, handler);
@@ -438,6 +623,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             AppLog.w("no app-change callback: " + e.getMessage());
         }
         setFocusable(true);
+        setClickable(true);
         sky = new Layer(a, SKY);
         heroLayer = new Layer(a, HERO);
         status = new Layer(a, STATUS);
@@ -513,6 +699,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         recs.refreshIfStale();
         Photos.importInbox(getContext(), ownReady);   // photos a computer just sent
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
+        startStatus();
         handler.postDelayed(tick, 15_000);
         playing.start();
         checkNotices();
@@ -552,6 +739,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data.removeListener(this);
         recs.removeListener(this);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
+        stopStatus();
     }
 
     void destroy() {
@@ -641,7 +829,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float kk = width / 1920f;
         measure(sky, width, height);
         measure(heroLayer, width, Math.round(790 * kk));
-        measure(status, Math.round(1160 * kk), Math.round(240 * kk));
+        // The icons at the top left need the whole width; with them off the layer keeps its old size (the corner buttons
+        // only), so the GPU still composites a small layer.
+        statusWide = Prefs.statusIcons();
+        measure(status, statusWide ? width : Math.round(1160 * kk), Math.round(240 * kk));
         // Sized to what they draw (the glass and its shadow; the grown tiles and their shadows): smaller layers are
         // cheaper for the GPU to composite on every frame of the drawer animation.
         measure(platter, width, Math.round(320 * kk));
@@ -662,7 +853,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float kk = width / 1920f;
         sky.layout(0, 0, width, height);
         place(heroLayer, 0, 0);
-        place(status, width - status.getMeasuredWidth(), 0);
+        place(status, statusWide ? 0 : width - status.getMeasuredWidth(), 0);
         place(platter, 0, Math.round(750 * kk));
         place(tiles, 0, Math.round(790 * kk));
         place(drawerLayer, 0, Math.round(470 * kk));
@@ -2415,6 +2606,205 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     // MARK: - Keys: only the arrows, OK, Back and Settings (system keys pass through to the system)
 
+    /** A mouse (or a touch screen) clicks what is under it, like OK on the focused item. */
+    @Override public boolean onTouchEvent(MotionEvent e) {
+        switch (e.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN:
+                touchX = e.getX();
+                touchY = e.getY();
+                return true;
+            case MotionEvent.ACTION_UP:
+                if (Math.hypot(e.getX() - touchX, e.getY() - touchY) < 24 * k) tap(e.getX(), e.getY());
+                return true;
+            default:
+                return true;
+        }
+    }
+
+    /** A mouse moves the focus to what is under the pointer, like a trackpad on tvOS. */
+    @Override public boolean onHoverEvent(MotionEvent e) {
+        if (e.getActionMasked() == MotionEvent.ACTION_HOVER_MOVE) hover(e.getX(), e.getY());
+        return true;
+    }
+
+    /** The mouse wheel moves through the shelf, the cards, the drawer and All Apps. */
+    @Override public boolean onGenericMotionEvent(MotionEvent e) {
+        if (e.getActionMasked() == MotionEvent.ACTION_SCROLL) {
+            float v = e.getAxisValue(MotionEvent.AXIS_VSCROLL);
+            if (v != 0) {
+                wheel(v < 0 ? 1 : -1);
+                return true;
+            }
+        }
+        return super.onGenericMotionEvent(e);
+    }
+
+    private void hover(float x, float y) {
+        wake();
+        if (reordering) return;
+        if (sheetOpen) {
+            int hit = gridAt(x, y);
+            if (hit >= 0 && hit != gridIndex) {
+                gridIndex = hit;
+                retargetGrid(false);
+                gridDirty = true;
+            }
+            return;
+        }
+        if (drawerOpen) {
+            int hit = hit(drawerRects, x, y);
+            if (hit >= 0 && (zone != Z_DRAWER || drawerIndex != hit)) {
+                zone = Z_DRAWER;
+                drawerIndex = hit;
+                retarget(false);
+            }
+            return;
+        }
+        int hit = hit(topRects, x, y);
+        if (hit >= 0 && (hit >= 3 || picksOn())) {
+            if (zone != Z_TOP || topIndex != hit) {
+                zone = Z_TOP;
+                topIndex = hit;
+                retarget(false);
+            }
+            return;
+        }
+        hit = hit(statusRects, x, y);
+        if (hit >= 0) {
+            if (zone != Z_STATUS || statusIndex != hit) {
+                zone = Z_STATUS;
+                statusIndex = hit;
+                retarget(false);
+            }
+            return;
+        }
+        hit = hit(cardRects, x, y);
+        if (hit >= 0 && hit < cards.size()) {
+            if (zone != Z_CARDS || cardIndex != hit) {
+                zone = Z_CARDS;
+                cardIndex = hit;
+                retarget(false);
+            }
+            return;
+        }
+        hit = hit(tileRects, x, y);
+        if (hit >= 0 && (zone != Z_SHELF || shelfIndex != hit)) {
+            zone = Z_SHELF;
+            shelfIndex = hit;
+            retarget(false);
+        }
+    }
+
+    private void wheel(int dir) {
+        wake();
+        if (sheetOpen) {
+            int next = Math.max(0, Math.min(others.size() - 1, gridIndex + dir * COLUMNS));
+            if (next != gridIndex) {
+                gridIndex = next;
+                retargetGrid(false);
+                gridDirty = true;
+            }
+        } else if (drawerOpen) {
+            int next = Math.max(0, Math.min(drawerItems.size() - 1, drawerIndex + dir));
+            if (next != drawerIndex) {
+                zone = Z_DRAWER;
+                drawerIndex = next;
+                retarget(false);
+            }
+        } else if (zone == Z_CARDS && !cards.isEmpty()) {
+            int next = Math.max(0, Math.min(cards.size() - 1, cardIndex + dir));
+            if (next != cardIndex) {
+                cardIndex = next;
+                retarget(false);
+            }
+        } else if (!shelf.isEmpty()) {
+            int next = Math.max(0, Math.min(shelf.size() - 1, shelfIndex + dir));
+            if (next != shelfIndex) {
+                zone = Z_SHELF;
+                shelfIndex = next;
+                retarget(false);
+            }
+        }
+    }
+
+    private void tap(float x, float y) {
+        wake();
+        if (reordering) return;
+        if (sheetOpen) {
+            int hit = gridAt(x, y);
+            if (hit >= 0) {
+                gridIndex = hit;
+                retargetGrid(false);
+                click.move();
+                gridDirty = true;
+                activate();
+            }
+            return;
+        }
+        if (drawerOpen) {
+            int hit = hit(drawerRects, x, y);
+            if (hit >= 0) {
+                zone = Z_DRAWER;
+                drawerIndex = hit;
+                retarget(false);
+                activate();
+            }
+            return;
+        }
+        int hit = hit(topRects, x, y);
+        if (hit >= 0 && (hit >= 3 || picksOn())) {
+            zone = Z_TOP;
+            topIndex = hit;
+            retarget(false);
+            activate();
+            return;
+        }
+        hit = hit(statusRects, x, y);
+        if (hit >= 0) {
+            zone = Z_STATUS;
+            statusIndex = hit;
+            retarget(false);
+            activate();
+            return;
+        }
+        hit = hit(cardRects, x, y);
+        if (hit >= 0 && hit < cards.size()) {
+            zone = Z_CARDS;
+            cardIndex = hit;
+            retarget(false);
+            activate();
+            return;
+        }
+        hit = hit(tileRects, x, y);
+        if (hit >= 0) {
+            zone = Z_SHELF;
+            shelfIndex = hit;
+            retarget(false);
+            activate();
+        }
+    }
+
+    private static int hit(RectF[] rects, float x, float y) {
+        for (int i = 0; i < rects.length; i++) if (!rects[i].isEmpty() && rects[i].contains(x, y)) return i;
+        return -1;
+    }
+
+    /** The All Apps cell under a point, if any (the sheet's own layout, scrolled). */
+    private int gridAt(float x, float y) {
+        float gridWidth = COLUMNS * GRID_W + (COLUMNS - 1) * GRID_GAP;
+        float left = (1920 - gridWidth) / 2 * k, top = GRID_TOP * k - scroll.value * GRID_ROW * k;
+        float cw = GRID_W * k, ch = GRID_H * k, gap = GRID_GAP * k, row = GRID_ROW * k;
+        for (int i = 0; i < others.size(); i++) {
+            int r = i / COLUMNS, col = i % COLUMNS;
+            float x0 = left + col * (cw + gap), y0 = top + r * row;
+            if (x >= x0 && x < x0 + cw && y >= y0 && y < y0 + ch) {
+                focusedCell.set(x0, y0, x0 + cw, y0 + ch);
+                return i;
+            }
+        }
+        return -1;
+    }
+
     boolean onKey(KeyEvent e) {
         wake();
         if (menuOpen) return menuKey(e);
@@ -4021,6 +4411,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      */
     private void drawLightButtons(Canvas c) {
         applyTone();
+        drawStatusIcons(c);
         for (int i = 0; i < lightButtons.size(); i++) {
             HomeApps.Item it = lightButtons.get(i);
             RectF r = topRects[3 + i];
@@ -4052,6 +4443,34 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float tw = lQuote.measureText(sleepText), size = lQuote.getTextSize();
         c.drawText(sleepText, right - tw, cy + Ui.halfCap(lQuote), lQuote);
         Symbols.draw(getContext(), c, "bedtime", right - tw - size * 0.9f, cy, size, lQuote.getColor());
+    }
+
+    /** Wi-Fi/Ethernet, Bluetooth (when something is connected) and a USB drive, at the top left. */
+    private void drawStatusIcons(Canvas c) {
+        if (!Prefs.statusIcons()) return;
+        float height = L_STATUS * k, gap = L_STATUS_GAP * k;
+        int color = Ui.alpha(tone(L_INK, 0xEBFFFFFF), 0.85f);
+        float x = MARGIN * k;
+        // With the picks on, the "For You" title is on this line too: the icons start after it, not under it.
+        if (picksOn()) x += lTitle.measureText(Ui.tr("For You")) + gap;
+        if (network != 0) x = drawStatusIcon(c, network == 2 ? "ethernet" : "wifi", x, height, gap, color);
+        if (bluetoothConnected) x = drawStatusIcon(c, "bluetooth", x, height, gap, color);
+        if (usbConnected) drawStatusIcon(c, "usb", x, height, gap, color);
+    }
+
+    /** Narrow symbols need a little more height to look as big as wide ones. */
+    private static float statusScale(String name) {
+        if ("bluetooth".equals(name)) return 1.18f;
+        if ("usb".equals(name)) return 1.3f;
+        return 1;
+    }
+
+    /** Draws a status icon left-aligned at `left`; returns where the next one starts. */
+    private float drawStatusIcon(Canvas c, String name, float left, float height, float gap, int color) {
+        float size = Symbols.pointSizeForHeight(getContext(), name, height * statusScale(name));
+        float width = Symbols.width(getContext(), name, size);
+        Symbols.draw(getContext(), c, name, left + width / 2, L_BUTTON_CY * k, size, color);
+        return left + width + gap;
     }
 
     private boolean moveLight(int dx, int dy) {
