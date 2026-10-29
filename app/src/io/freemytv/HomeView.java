@@ -3,8 +3,10 @@ package io.freemytv;
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Activity;
 import android.content.ActivityNotFoundException;
+import android.bluetooth.BluetoothA2dp;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothHeadset;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
 import android.content.BroadcastReceiver;
@@ -507,9 +509,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void startStatus() {
         if (!Prefs.statusIcons()) return;
         updateDevices();
-        // The registration hands the current network over at once, so the first read is this callback.
+        // The registration hands the current network over at once, so the first read is this callback. With no
+        // network at all it hands nothing, and the icon would keep the one from before the pause (Wi-Fi turned off).
         if (connectivity != null && !networkRegistered) {
             try {
+                if (connectivity.getActiveNetwork() == null) setNetwork(0);
                 connectivity.registerDefaultNetworkCallback(networkCallback, handler);
                 networkRegistered = true;
             } catch (RuntimeException ignored) {
@@ -521,6 +525,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             f.addAction(BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED);
             f.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
             f.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+            // Headphones connect their link first and the audio a moment later; with a Bluetooth remote already
+            // connected the adapter's own state doesn't change then, so the profiles' broadcasts say it.
+            f.addAction(BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED);
+            f.addAction(BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
             f.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
             f.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
             try {
@@ -2627,17 +2635,33 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return super.onGenericMotionEvent(e);
     }
 
+    /**
+     * The item the pointer was last over (zone * 1000 + index, -1: none). Hover moves the focus only when the pointer
+     * comes onto another item, as LG's mouseover does: a resting pointer nudged by a hand (an air mouse) doesn't pull
+     * the focus back from where the arrows took it.
+     */
+    private int hovered = -1;
+    private static final int H_MENU = 7, H_GRID = 8;   // hover's codes for the menu's rows and All Apps' cells
+
+    /** True when the pointer has just come onto (zone, index); index -1 (nothing there) only forgets the last one. */
+    private boolean entered(int zone, int index) {
+        int code = index < 0 ? -1 : zone * 1000 + index;
+        if (code == hovered) return false;
+        hovered = code;
+        return code >= 0;
+    }
+
     private void hover(float x, float y) {
         wake();
         if (reordering) return;
         if (menuOpen) {   // only the menu's rows: what's behind it stays as it was
             int row = menuAt(x, y);
-            if (row >= 0 && row != menuIndex) moveMenu(row - menuIndex);
+            if (entered(H_MENU, row)) moveMenu(row - menuIndex);
             return;
         }
         if (sheetOpen) {
-            int hit = gridAt(x, y);
-            if (hit >= 0 && hit != gridIndex) {
+            int hit = gridAt(x, y, true);
+            if (entered(H_GRID, hit) && hit != gridIndex) {
                 gridIndex = hit;
                 retargetGrid(false);
                 gridDirty = true;
@@ -2646,50 +2670,46 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         if (drawerOpen) {
             int hit = hit(drawerRects, x, y);
-            if (hit >= 0 && (zone != Z_DRAWER || drawerIndex != hit)) {
+            if (entered(Z_DRAWER, hit) && (zone != Z_DRAWER || drawerIndex != hit)) {
                 zone = Z_DRAWER;
                 drawerIndex = hit;
                 retarget(false);
             }
             return;
         }
-        int hit = hit(topRects, x, y);
-        if (hit >= 0 && (hit >= 3 || picksMode())) {   // the tabs are there only with the picks
-            if (zone != Z_TOP || topIndex != hit) {
-                zone = Z_TOP;
-                topIndex = hit;
-                retarget(false);
-            }
-            return;
+        int z = Z_TOP, hit = topAt(x, y);
+        if (hit < 0) {
+            z = Z_CARDS;
+            hit = cardAt(x, y, true);
         }
-        hit = hit(cardRects, x, y);
-        if (hit >= 0 && hit < cards.size()) {
-            if (zone != Z_CARDS || cardIndex != hit) {
-                zone = Z_CARDS;
-                cardIndex = hit;
-                retarget(false);
-            }
-            return;
+        if (hit < 0) {
+            z = Z_WATCH;
+            hit = watchAt(x, y, true);
         }
-        hit = watchAt(x, y);
-        if (hit >= 0) {
-            if (zone != Z_WATCH || watchIndex != hit) {
-                zone = Z_WATCH;
-                watchIndex = hit;
-                retarget(false);
-            }
-            return;
+        if (hit < 0) {
+            z = Z_SHELF;
+            hit = tileAt(x, y);
         }
-        hit = tileAt(x, y);
-        if (hit >= 0 && (zone != Z_SHELF || shelfIndex != hit)) {
-            zone = Z_SHELF;
+        if (!entered(z, hit)) return;
+        int now = zone == Z_TOP ? topIndex : zone == Z_CARDS ? cardIndex : zone == Z_WATCH ? watchIndex : shelfIndex;
+        if (zone == z && now == hit) return;
+        zone = z;
+        if (z == Z_TOP) {
+            topIndex = hit;
+            if (hit < 3) selectTab(hit);   // as with the arrows (and on LG): focusing a tab selects it
+        } else if (z == Z_CARDS) {
+            cardIndex = hit;
+        } else if (z == Z_WATCH) {
+            watchIndex = hit;
+        } else {
             shelfIndex = hit;
-            retarget(false);
         }
+        retarget(false);
     }
 
     private void wheel(int dir) {
         wake();
+        if (reordering) return;   // the arrows move the lifted app; the wheel would move the focus off it
         if (menuOpen) {
             moveMenu(dir);
         } else if (sheetOpen) {
@@ -2744,7 +2764,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             return;
         }
         if (sheetOpen) {
-            int hit = gridAt(x, y);
+            int hit = gridAt(x, y, false);
             if (hit >= 0) {
                 gridIndex = hit;
                 retargetGrid(false);
@@ -2764,23 +2784,23 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
             return;
         }
-        int hit = hit(topRects, x, y);
-        if (hit >= 0 && (hit >= 3 || picksMode())) {
+        int hit = topAt(x, y);
+        if (hit >= 0) {
             zone = Z_TOP;
             topIndex = hit;
             retarget(false);
             activate();
             return;
         }
-        hit = hit(cardRects, x, y);
-        if (hit >= 0 && hit < cards.size()) {
+        hit = cardAt(x, y, false);
+        if (hit >= 0) {
             zone = Z_CARDS;
             cardIndex = hit;
             retarget(false);
             activate();
             return;
         }
-        hit = watchAt(x, y);
+        hit = watchAt(x, y, false);
         if (hit >= 0) {
             zone = Z_WATCH;
             watchIndex = hit;
@@ -2806,13 +2826,35 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return -1;
     }
 
-    /** The Continue Watching card under a point, if any (only the ones on screen). */
-    private int watchAt(float x, float y) {
+    /**
+     * The tab or round button under a point: the tabs only with the picks, and only the buttons there now (a shorter
+     * list leaves the old places of the others in topRects).
+     */
+    private int topAt(float x, float y) {
+        int hit = hit(topRects, x, y);
+        return hit >= 3 + lightButtons.size() || hit >= 0 && hit < 3 && !picksMode() ? -1 : hit;
+    }
+
+    /**
+     * The picks' card under a point, if any. Hovering (`still`) only takes a card that keeps its row where it is: the
+     * row scrolls so the focused card is the third (retarget), so hovering the one peeking in at the edge, or the first
+     * one of a scrolled row, would slide the next one under the pointer, and the focus would run along the row as the
+     * pointer moves. A click takes any card.
+     */
+    private int cardAt(float x, float y, boolean still) {
+        int hit = hit(cardRects, x, y);
+        if (hit < 0 || hit >= cards.size()) return -1;
+        return still && Math.max(0, hit - 2) != cardScroll.target ? -1 : hit;
+    }
+
+    /** The Continue Watching card under a point, if any (only the ones on screen; `still` as in cardAt). */
+    private int watchAt(float x, float y, boolean still) {
         if (!continueMode()) return -1;
         for (int i = 0; i < watching.size(); i++) {
             watchRect(i, hitBox);
             if (hitBox.left > w || hitBox.right <= watchLeftEdge()) continue;
-            if (hitBox.contains(x, y)) return i;
+            if (!hitBox.contains(x, y)) continue;
+            return still && Math.max(0, Math.min(i - 2, watching.size() - 3)) != watchScroll.target ? -1 : i;
         }
         return -1;
     }
@@ -2832,8 +2874,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return -1;
     }
 
-    /** The All Apps cell under a point, if any (the sheet's own layout, scrolled). */
-    private int gridAt(float x, float y) {
+    /**
+     * The All Apps cell under a point, if any (the sheet's own layout, scrolled). Hovering (`still`) only takes the
+     * rows on screen: a row peeks in at the bottom (and at the top once scrolled), and focusing it would scroll the
+     * next one under the pointer (retargetGrid's rows).
+     */
+    private int gridAt(float x, float y, boolean still) {
         float gridWidth = COLUMNS * GRID_W + (COLUMNS - 1) * GRID_GAP;
         float left = (1920 - gridWidth) / 2 * k, top = GRID_TOP * k - scroll.value * GRID_ROW * k;
         float cw = GRID_W * k, ch = GRID_H * k, gap = GRID_GAP * k, row = GRID_ROW * k;
@@ -2841,6 +2887,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             int r = i / COLUMNS, col = i % COLUMNS;
             float x0 = left + col * (cw + gap), y0 = top + r * row;
             if (x >= x0 && x < x0 + cw && y >= y0 && y < y0 + ch) {
+                if (still && (r < scroll.target || r > scroll.target + VISIBLE_ROWS - 1)) return -1;
                 focusedCell.set(x0, y0, x0 + cw, y0 + ch);
                 return i;
             }

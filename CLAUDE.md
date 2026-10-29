@@ -397,6 +397,14 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   It unbinds itself as soon as it connects (the permission is all it's for), and the home screen and the screensaver
   watch the sessions only while they show. The line is cut to fit when the title changes, never while drawing; the
   home screen's bars bounce again only for a new title (`Watch.title`), and TalkBack announces it then.
+- *Status icons* (Home Settings, off by default): Wi-Fi or Ethernet, Bluetooth audio (A2DP and headset only: a
+  Bluetooth remote is always connected) and a mounted removable drive. Nothing listens while the row is off; Android
+  12+ asks for `BLUETOOTH_CONNECT` (*Nearby devices*) when it's turned on, and without it only that icon is missing.
+- A mouse or an air mouse works on the home screen and in Settings (`onTouchEvent`, `onHoverEvent`,
+  `onGenericMotionEvent`; the remote's keys never go through them): a click acts on what's drawn under the pointer, the
+  wheel moves like the arrows, and hover moves the focus only when the pointer comes onto another item (a hand's nudge
+  doesn't pull it back from the arrows) and never to one that would scroll its row (the next one would slide under the
+  pointer).
 - HY300 projectors (Hotack, Allwinner H713, Android 11 tested; the build claims to be an `askey`/`adt3`): the stock
   home screen and screensaver are `com.htc.htclauncherhighenglishd08`, which also carries an ad SDK (`com.zeasn.ad`).
   Keystone, zoom and projection mode live in `com.htc.htcsettings` (`action.htcsettings.prjsettings`), and the Miracast

@@ -273,7 +273,6 @@ public class SettingsActivity extends Activity {
             scene.setMotion(0.5f, 0.2f);
             scene.applyPalette();
             setFocusable(true);
-            setClickable(true);
             setContentDescription("Free My TV");
             installed = Updates.installedVersion(a);
             // TalkBack: one item per row, id = row + 1.
@@ -753,6 +752,7 @@ public class SettingsActivity extends Activity {
                             leaveTopRow(row);
                             focus = row - pickScroll;
                             activate();
+                            whyRows = null;   // as after OK
                             invalidate();
                             spoken.focusMoved();
                         }
@@ -763,10 +763,16 @@ public class SettingsActivity extends Activity {
             }
         }
 
+        /** The row the pointer was last over (screen * 1000 + row, -1: none): only a new one moves the focus. */
+        private int hoveredRow = -1;
+
+        /** As on the home screen: the focus moves when the pointer comes onto another row, not at every nudge. */
         @Override public boolean onHoverEvent(MotionEvent e) {
             if (e.getActionMasked() == MotionEvent.ACTION_HOVER_MOVE) {
-                int row = rowAt(e.getX(), e.getY()), at = row - pickScroll;
-                if (row >= 0 && at != focus) {
+                int row = rowAt(e.getX(), e.getY()), at = row - pickScroll, code = row < 0 ? -1 : screen * 1000 + row;
+                boolean entered = code != hoveredRow;
+                hoveredRow = code;
+                if (entered && row >= 0 && at != focus) {
                     leaveTopRow(row);
                     focus = at;
                     invalidate();
