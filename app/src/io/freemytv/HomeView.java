@@ -55,7 +55,7 @@ import java.util.function.Consumer;
  *    buttons (Live TV, HDMI Inputs, Settings), with the focused one's name below it, and the small crypto quotes
  *    (logo + price) at the right end of the tab row;
  *  - three cards with the titles recommended for right now in the selected tab (Recs, from TMDB); the background is
- *    the first card's photo, heavily blurred and almost white (Backdrop); without picks, one of your own photos
+ *    the focused card's photo, heavily blurred and almost white (Backdrop); without picks, one of your own photos
  *    (Photos) the same way, or else a light gradient;
  *  - at the bottom, the glass shelf with the apps (icons in each brand's color, like the tvOS Dock; the focused one
  *    grows);
@@ -3102,7 +3102,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         @Override public void run() {
             if (!running || !picksMode() || cards.isEmpty()) return;
             Backdrop b = recs.backdrop(cards.get(Math.min(cardIndex, cards.size() - 1)));
-            if (b == null) return;   // not built yet: updateCards shows it when it is
+            // Not built yet (updateCards shows it when it is), or already there: nothing to fade, no frame to draw
+            if (b == null || b == bgTo) return;
             showBackdrop(b);
             wake();
         }
@@ -3764,8 +3765,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     /**
-     * Background: the first card's photo, heavily blurred and almost white; without it, a light gradient. At night, the
-     * same photo almost black (or a dark gradient), drawn on top during the transition.
+     * Background: the focused card's photo, heavily blurred and almost white; without it, a light gradient. At night,
+     * the same photo almost black (or a dark gradient), drawn on top during the transition.
      */
     private void drawLightSky(Canvas c) {
         long up = SystemClock.uptimeMillis();

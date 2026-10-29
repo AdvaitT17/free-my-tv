@@ -2,7 +2,7 @@
  * The home screen for web-app TVs (LG webOS, Samsung Tizen), with the Android app's design and behavior (HomeView):
  *  - top: the "For You" title and the tabs (Explore, Movies, Shows); icon-only glass buttons at the right (Live TV,
  *    HDMI Inputs, Settings) and the crypto quotes at the end of the tab row;
- *  - three picks for this hour in the selected tab; the background is the first one's photo, blurred and almost white;
+ *  - three picks for this hour in the selected tab; the background is the focused one's photo, blurred, almost white;
  *  - the glass shelf with the apps; ↓ opens the drawer (inputs, shortcuts, weather, prices); ↑ or Back closes it;
  *  - a night look from sunset to sunrise; a screensaver after a few idle minutes.
  * The remote's arrows, OK and Back move the focus; a pointer (LG's Magic Remote) focuses what it points at.
