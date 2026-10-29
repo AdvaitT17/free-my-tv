@@ -167,6 +167,9 @@ final class ImmichPhotos {
             long size = exif == null ? 0 : exif.optLong("fileSizeInByte");
             boolean original = !small && "image/jpeg".equals(a.optString("originalMimeType")) && size < MAX_ORIGINAL;
             File part = new File(inbox, "." + Photos.IMMICH + id), done = new File(inbox, Photos.IMMICH + id + ".jpg");
+            // All 100 are tools/photos.py's, so nothing could make room: stop before a download that would be thrown
+            // away (and, with nothing imported, made again every 30 minutes)
+            if (Photos.count(app) >= Photos.MAX && Photos.fromImmich(app).isEmpty()) break;
             try {
                 download("/api/assets/" + id + (original ? "/original" : "/thumbnail?size=preview"), part);
                 // Room only now that the new one is here: a download that fails takes nothing away
