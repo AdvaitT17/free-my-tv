@@ -474,6 +474,7 @@ final class Trakt {
         HttpURLConnection c = (HttpURLConnection) new URL(API + path).openConnection();
         c.setConnectTimeout(8000);
         c.setReadTimeout(15000);
+        c.setInstanceFollowRedirects(false);   // HttpURLConnection keeps custom headers across hosts: the token must not follow a redirect
         c.setRequestMethod(method);
         c.setRequestProperty("Content-Type", "application/json");
         c.setRequestProperty("User-Agent", "FreeMyTV");

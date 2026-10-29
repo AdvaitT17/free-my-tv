@@ -900,9 +900,7 @@ public class SettingsActivity extends Activity {
             if (code != null) return Ui.trf("{url}, code {code}", "url", Trakt.url(), "code", code);
             if (Trakt.busy()) return Ui.tr("Connecting…");
             if (Trakt.signedIn(c)) return Trakt.user(c).isEmpty() ? Ui.tr("Signed in") : Trakt.user(c);
-            String m = Trakt.message().isEmpty() ? Ui.tr("Sign in") : Trakt.message();
-            if (rowValue == null) return m;   // TalkBack can ask before the first layout
-            return TextUtils.ellipsize(m, new TextPaint(rowValue), 640 * k, TextUtils.TruncateAt.END).toString();
+            return Trakt.message().isEmpty() ? Ui.tr("Sign in") : Trakt.message();
         }
 
         /** OK on the Trakt row: shows a code to sign in with, or asks before signing out. */
