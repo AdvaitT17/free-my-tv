@@ -35,7 +35,7 @@ import java.util.Set;
  * it, or until they sign in, nothing here runs and the picks stay TMDB's.
  *
  * Signing in is Trakt's device code with PKCE: the TV shows a short code, they type it at trakt.tv/activate on their
- * phone. Trakt no longer gives new apps a client secret; one from an older app ("trakt_client_secret") is still sent.
+ * phone. Only the Client ID is needed, so no secret is ever built into the APK (Trakt made it optional, trakt-api#974).
  * The tokens stay in this process's SharedPreferences (:home, where Settings and the home screen both run), and
  * only :home uses them: on Android 11 to 12L the screensaver runs in the main process (ScreensaverAlone), where a
  * renewal from its own copy would leave :home's refresh token spent, and so signed out.
@@ -159,8 +159,8 @@ final class Trakt {
                 long until = System.currentTimeMillis() + start.optLong("expires_in", 600) * 1000L;
                 while (System.currentTimeMillis() < until) {
                     Thread.sleep(interval);
-                    Response r = send("POST", "/oauth/device/token", withSecret(new JSONObject().put("code", deviceCode)
-                            .put("client_id", clientId()).put("code_verifier", verifier)), null);
+                    Response r = send("POST", "/oauth/device/token", new JSONObject().put("code", deviceCode)
+                            .put("client_id", clientId()).put("code_verifier", verifier), null);
                     if (r.code == 200) {
                         save(app, new JSONObject(r.body));
                         String name = "";
@@ -201,7 +201,7 @@ final class Trakt {
         if (token.isEmpty()) return;
         new Thread(() -> {
             try {
-                send("POST", "/oauth/revoke", withSecret(new JSONObject().put("token", token).put("client_id", clientId())), null);
+                send("POST", "/oauth/revoke", new JSONObject().put("token", token).put("client_id", clientId()), null);
             } catch (Exception ignored) {
             }
         }, "trakt").start();
@@ -219,8 +219,8 @@ final class Trakt {
         String refresh = sp.getString("refresh", "");
         if (refresh.isEmpty()) throw new IOException("not signed in");
         if (System.currentTimeMillis() < sp.getLong("expires", 0) - 3600_000L) return sp.getString("access", "");
-        Response r = send("POST", "/oauth/token", withSecret(new JSONObject().put("refresh_token", refresh).put("client_id", clientId())
-                .put("redirect_uri", "urn:ietf:wg:oauth:2.0:oob").put("grant_type", "refresh_token")), null);
+        Response r = send("POST", "/oauth/token", new JSONObject().put("refresh_token", refresh).put("client_id", clientId())
+                .put("redirect_uri", "urn:ietf:wg:oauth:2.0:oob").put("grant_type", "refresh_token"), null);
         if (r.code == 400 || r.code == 401) {
             // The person disconnected the app on trakt.tv (or the token is gone): signed out here too.
             sp.edit().clear().apply();
@@ -428,12 +428,6 @@ final class Trakt {
 
     private static String clientId() {
         return Config.TRAKT_CLIENT_ID.trim();
-    }
-
-    /** Apps made before Trakt dropped the secret still send theirs; new ones (PKCE) send none. */
-    private static JSONObject withSecret(JSONObject body) throws org.json.JSONException {
-        String secret = Config.TRAKT_CLIENT_SECRET.trim();
-        return secret.isEmpty() ? body : body.put("client_secret", secret);
     }
 
     private static String base64Url(byte[] bytes) {
