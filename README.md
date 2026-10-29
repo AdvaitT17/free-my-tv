@@ -58,6 +58,8 @@ If you built Free My TV yourself before, switch back to *Original* and uninstall
    ```
    On Android 14, Google Play Protect may hold the install with *Risky app blocked*: choose *More details* → *Install anyway*.
 
+   Install it with adb like this, not by opening the APK on the TV: from a file manager or a browser, Play Protect can refuse it outright with *App blocked to protect your device* (in some countries it blocks sideloaded apps that have an accessibility service or a notification listener, which Free My TV uses for the remote's buttons and Now Playing; #378).
+
    On TCL TVs, also let it run in the background (TCL blocks it by default, and the switch never starts). An uninstall takes the permission back, so run it again after every new install:
    ```bash
    adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"
