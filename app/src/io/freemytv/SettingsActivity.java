@@ -784,9 +784,7 @@ public class SettingsActivity extends Activity {
                                 pickScroll = 0;   // the picker's scroll isn't this short list's
                                 screen = POWER;
                             } else if (screen == PICKER && (pickFor == PICK_CITY || pickFor == PICK_LANGUAGE)) {
-                                focus = pickFor == PICK_CITY ? CITY_ROW : 0;
-                                pickScroll = 0;   // both rows are on the list's first screen
-                                screen = HOME_SETTINGS;
+                                showSettingsRow(pickFor == PICK_CITY ? CITY_ROW : 0);
                             } else if (screen == PICKER) {
                                 focus = pickFor - 1;
                                 screen = REMOTE_KEYS;
@@ -1322,9 +1320,17 @@ public class SettingsActivity extends Activity {
 
         private void closeKeyScreen() {
             stopKeyPage();
+            showSettingsRow(keyRow());
+        }
+
+        /**
+         * Back on Home Settings with the focus on `row`, scrolled so it shows: City, past the first screen since Continue
+         * Watching's rows, came back with the focus off screen (and the picker's scroll isn't this list's).
+         */
+        private void showSettingsRow(int row) {
             screen = HOME_SETTINGS;
-            int row = keyRow(), rows = settingLabels().length;
-            pickScroll = Math.max(0, Math.min(row - 3, rows - Math.min(SETTINGS_VISIBLE, rows)));
+            int rows = settingLabels().length, visible = Math.min(SETTINGS_VISIBLE, rows);
+            pickScroll = row < visible ? 0 : Math.max(0, Math.min(row - 3, rows - visible));
             focus = row - pickScroll;
         }
 
@@ -1998,9 +2004,7 @@ public class SettingsActivity extends Activity {
                 String[] city = cities.get(pickScroll + focus);
                 Prefs.setCity(city[1], city[2], city[3]);
                 HomeData.get(c).settingsChanged();
-                focus = CITY_ROW;
-                pickScroll = 0;
-                screen = HOME_SETTINGS;
+                showSettingsRow(CITY_ROW);
             } else if (screen == PICKER && pickFor <= PICK_SLEEP) {
                 pickPower();
             } else if (screen == PICKER && pickFor == PICK_LANGUAGE) {
