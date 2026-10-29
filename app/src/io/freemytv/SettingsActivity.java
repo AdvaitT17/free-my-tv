@@ -888,11 +888,48 @@ public class SettingsActivity extends Activity {
         }
 
         private String[] picksLabels() {
-            return new String[] {Ui.tr("Picks per tab"), Ui.tr("Picks from")};
+            return Trakt.available() ? new String[] {Ui.tr("Picks per tab"), Ui.tr("Picks from"), "Trakt"}
+                    : new String[] {Ui.tr("Picks per tab"), Ui.tr("Picks from")};
         }
 
         private String[] picksValues() {
-            return new String[] {String.valueOf(Prefs.cards()), someServicesOff ? Ui.tr("services|Some") : Ui.tr("services|All")};
+            String from = someServicesOff ? Ui.tr("services|Some") : Ui.tr("services|All");
+            return Trakt.available() ? new String[] {String.valueOf(Prefs.cards()), from, traktValue()}
+                    : new String[] {String.valueOf(Prefs.cards()), from};
+        }
+
+        /** The Trakt row on the Picks screen (the last one), only with a Trakt API app in config.properties; else -1. */
+        private static int traktRow() {
+            return Trakt.available() ? 2 : -1;
+        }
+
+        private String traktValue() {
+            Context c = getContext();
+            String code = Trakt.code();
+            if (code != null) return Ui.trf("{url}, code {code}", "url", Trakt.url(), "code", code);
+            if (Trakt.busy()) return Ui.tr("Connecting…");
+            if (Trakt.signedIn(c)) return Trakt.user(c).isEmpty() ? Ui.tr("Signed in") : Trakt.user(c);
+            return Trakt.message().isEmpty() ? Ui.tr("Sign in") : Trakt.message();
+        }
+
+        /** OK on the Trakt row: shows a code to sign in with, or asks before signing out. */
+        private void traktOk() {
+            Context c = getContext();
+            if (!Trakt.signedIn(c)) {
+                // TalkBack reads the row again at each step: the code as it appears, then signed in (or why not).
+                Trakt.signIn(c, () -> handler.post(() -> {
+                    invalidate();
+                    spoken.focusMoved();
+                }));
+                return;
+            }
+            String user = Trakt.user(c).isEmpty() ? "Trakt" : Trakt.user(c);
+            new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle("Trakt")
+                    .setMessage(Ui.trf("Sign out of {name}? The picks go back to TMDB's alone.", "name", user))
+                    .setPositiveButton(Ui.tr("Sign out"), (d, which) -> { Trakt.signOut(c); invalidate(); })
+                    .setNegativeButton(Ui.tr("Cancel"), null)
+                    .show();
         }
 
         private String[] settingValues() {
@@ -2151,6 +2188,10 @@ public class SettingsActivity extends Activity {
                 return;
             } else if (screen == POWER) {
                 activatePower();
+            } else if (screen == PICKS && focus == traktRow()) {
+                traktOk();
+                invalidate();
+                return;
             } else if (screen == PICKS) {
                 adjust(1);
                 invalidate();
