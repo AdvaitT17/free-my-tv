@@ -201,6 +201,10 @@ final class Prefs {
 
     static void setTheme(String v) { put("theme", v); }
 
+    /** Wi-Fi/Ethernet, Bluetooth and USB icons at the top-left of the home screen. */
+    static boolean statusIcons() { return sp().getBoolean("statusicons", false); }
+    static void setStatusIcons(boolean on) { put("statusicons", on); }
+
     // MARK: - City
 
     static String city() { return sp().getString("city", Place.city()).trim(); }
