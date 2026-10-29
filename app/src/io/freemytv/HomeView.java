@@ -117,6 +117,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final NowPlaying.Watch playing;
     private final Click click;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    /** The background follows the focused pick once it has been there this long (see bgFollow). */
+    private static final long BG_FOLLOW_MS = 500;
     private final SharedPreferences ui;
     private final TvInputManager tvInputs;
     private final Spoken spoken = new Spoken(this, new Spoken.Source() {
@@ -537,6 +539,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     void pause() {
         if (!running) return;
         running = false;
+        handler.removeCallbacks(bgFollow);
         cancelReorder(true);
         handler.removeCallbacks(holdStart);
         okHeld = holdArmed = false;
@@ -2115,6 +2118,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         heroChanged |= cardScroll.target != scrollTo;
         cardScroll.target = scrollTo;
         if (snap) cardScroll.snap(scrollTo);
+        if (picksMode() && !cards.isEmpty()) {
+            handler.removeCallbacks(bgFollow);
+            handler.postDelayed(bgFollow, BG_FOLLOW_MS);
+        }
         heroChanged |= aim(watchFocus, !sheetOpen && zone == Z_WATCH ? watchIndex : -1, snap);
         updateTint();
         // The row scrolls so the focused card is at most the third one on screen.
@@ -3087,6 +3094,20 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return out;
     }
 
+    /**
+     * The background is the focused pick's, as on Netflix and Prime Video: once the focus has rested on it BG_FOLLOW_MS,
+     * so a quick run along the row fades once. Its backdrop is already in memory (this tab's picks all are).
+     */
+    private final Runnable bgFollow = new Runnable() {
+        @Override public void run() {
+            if (!running || !picksMode() || cards.isEmpty()) return;
+            Backdrop b = recs.backdrop(cards.get(Math.min(cardIndex, cards.size() - 1)));
+            if (b == null) return;   // not built yet: updateCards shows it when it is
+            showBackdrop(b);
+            wake();
+        }
+    };
+
     /** A spoken-feedback service (TalkBack) is on. */
     private boolean talkBack() {
         AccessibilityManager am = (AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
@@ -3248,7 +3269,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
     }
 
-    /** The three cards of the current tab (Explore, Movies, Shows) and the background taken from the first one. */
+    /** The three cards of the current tab (Explore, Movies, Shows) and the background taken from the focused one. */
     private void updateCards() {
         cardSlots = Prefs.cards();
         if (!picksMode()) {
@@ -3277,7 +3298,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         // Picks bring their own background; without them (no TMDB key), your photo if there is one.
         boolean own = !picksOn() && Photos.on(getContext());
-        Backdrop b = own ? Photos.backdrop(getContext(), ownReady) : cards.isEmpty() ? null : recs.backdrop(cards.get(0));
+        Backdrop b = own ? Photos.backdrop(getContext(), ownReady)
+                : cards.isEmpty() ? null : recs.backdrop(cards.get(Math.min(cardIndex, cards.size() - 1)));
         if (b != null || (cards.isEmpty() && !own)) showBackdrop(b);
         heroDirty = true;
         spoken.focusMoved();    // new picks under the focused card
