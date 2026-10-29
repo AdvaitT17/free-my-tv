@@ -92,7 +92,9 @@ final class Backdrop {
         Canvas c = new Canvas(out);
         if (forLight) {
             // Light design: everything comes from the photo without scrims.
-            Bitmap wide = card(out, WIDE_W, WIDE_H);
+            // The wide card is far wider than the photo: its strip comes off the bottom (under the card's text), not
+            // half off the top.
+            Bitmap wide = card(out, WIDE_W, WIDE_H, 0);
             int[] frost = reduce(out, FW, FH, 3, 3);
             int[] light = whiten(frost.clone(), 0.82f);
             int[] glass = reduce(out, GW, GH, 2, 2);
@@ -182,7 +184,18 @@ final class Backdrop {
 
     /** The center of the photo at the card's aspect ratio, filtered down to the exact size. */
     static Bitmap card(Bitmap full, int w, int h) {
-        Bitmap b = center(full, (float) w / h);
+        return card(full, w, h, 0.5f);
+    }
+
+    /**
+     * The photo at the card's aspect ratio, filtered down to the exact size. Where it's taller than the card, `top`
+     * says where the cut goes: 0 keeps its top and takes the strip off the bottom, 0.5 takes half from each.
+     */
+    static Bitmap card(Bitmap full, int w, int h, float top) {
+        float ratio = (float) w / h;
+        int cw = Math.min(full.getWidth(), Math.round(full.getHeight() * ratio));
+        int ch = Math.min(full.getHeight(), Math.round(cw / ratio));
+        Bitmap b = Bitmap.createBitmap(full, (full.getWidth() - cw) / 2, Math.round((full.getHeight() - ch) * top), cw, ch);
         Bitmap out = Ui.downscale(b, w, h);
         if (b != full && b != out) b.recycle();
         return out == full ? gpu(full.copy(Bitmap.Config.ARGB_8888, false)) : gpu(out);
