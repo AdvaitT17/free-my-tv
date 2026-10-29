@@ -209,6 +209,8 @@ public class SettingsActivity extends Activity {
         private String errorShown;
         private final Spoken spoken;
         private long startedAt, lastNanos, pendingAt, lastSky;
+        private long requestedAt;   // the switch asked for: its stamp, to tell whether its job ever started
+        private boolean stalled;    // it didn't: a TV maker's background blocker (stalledText says what to do)
         private int w, h;
         private float k = 1;
         private Paint title, subtitle, version, rowLabel, rowValue, rowSub, header, cellLabel, cellValue, warn, spinner, white, shadow;
@@ -227,7 +229,18 @@ public class SettingsActivity extends Activity {
                     spoken.focusMoved();   // TalkBack reads the Updates row's new value
                 }
                 boolean nowBusy = !busyText().isEmpty();
-                if (nowBusy) pendingAt = 0;
+                if (nowBusy) {
+                    pendingAt = 0;
+                    stalled = false;
+                } else if (pendingAt != 0 && SystemClock.uptimeMillis() - pendingAt >= 10_000) {
+                    // Asked 10 s ago and its job never ran: say why, rather than quietly showing Original again (#364).
+                    pendingAt = 0;
+                    if (!ModeJob.started(getContext(), requestedAt)) {
+                        stalled = true;
+                        AppLog.w("the switch's job didn't start" + (RemoteKeys.TCL ? " (TCL's AUTO_START not allowed?)" : ""));
+                        announceForAccessibility(stalledText());
+                    }
+                }
                 // What can change the reasons away from a key: a switch (or the watchdog's revert) and the overlay's and the
                 // listener's checks.
                 int whyNow = (freeActive() ? 1 : 0) | (Capabilities.refused(getContext(), Capabilities.OVERLAY) ? 2 : 0)
@@ -461,6 +474,18 @@ public class SettingsActivity extends Activity {
             return HomeMode.FREE.equals(state.optString("mode")) && !state.optBoolean("homeReverted");
         }
 
+        /**
+         * Why a switch never started, and what to do. TCL's TclAppBoot blocks the job until its permission is allowed
+         * from a computer, and an uninstall takes that back (#364, #375): the README's command, for both of its names.
+         */
+        private static String stalledText() {
+            return RemoteKeys.TCL
+                    ? Ui.trf("TCL blocks Free My TV from running in the background, so nothing changed. From a computer, "
+                            + "run this, then try again: {command}", "command",
+                            "adb shell \"appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow\"")
+                    : Ui.tr("The TV didn't let Free My TV run in the background, so nothing changed. Try again in a minute.");
+        }
+
         private int rowCount() {
             switch (screen) {
                 case MAIN: return 8;
@@ -548,18 +573,19 @@ public class SettingsActivity extends Activity {
             }
 
             float y = (MAIN_TOP + labels.length * (ROW_H + MAIN_GAP) + 20) * k;
-            String error = state.optString("error");
+            String error = stalled ? stalledText() : state.optString("error");
             if (working && busyText.equals(Ui.tr("Accept “Allow USB debugging?” on the TV (tick “Always allow”)."))) {
                 c.drawText(Ui.tr("On the TV: tick “Always allow” and press OK."),
                         LIST_X * k + 30 * k, y, warn);
                 y += 46 * k;
             } else if (!working && !error.isEmpty()) {
-                // The whole message, on up to five lines: some say what to do (the Wi-Fi one, #14).
+                // The whole message, on up to five lines: some say what to do (the Wi-Fi one, #14). A stalled switch's
+                // ends with a command, which must never be cut: eight there.
                 int width = Math.round(760 * k);
                 if (errorLayout == null || !error.equals(errorShown) || errorLayout.getWidth() != width) {
                     errorShown = error;
                     errorLayout = StaticLayout.Builder.obtain(error, 0, error.length(), new TextPaint(warn), width)
-                            .setMaxLines(5).setEllipsize(TextUtils.TruncateAt.END).build();
+                            .setMaxLines(stalled ? 8 : 5).setEllipsize(TextUtils.TruncateAt.END).build();
                 }
                 c.save();
                 c.translate(LIST_X * k + 30 * k, y - errorLayout.getLineBaseline(0));
@@ -1952,8 +1978,9 @@ public class SettingsActivity extends Activity {
                 boolean wantFree = focus == 0;
                 boolean already = wantFree ? freeActive() : HomeMode.ORIGINAL.equals(state.optString("mode", HomeMode.ORIGINAL));
                 if (!already && !busy()) {
-                    HomeMode.request(c, wantFree ? HomeMode.FREE : HomeMode.ORIGINAL);
+                    requestedAt = HomeMode.request(c, wantFree ? HomeMode.FREE : HomeMode.ORIGINAL);
                     pendingAt = SystemClock.uptimeMillis();
+                    stalled = false;
                 }
                 screen = MAIN;
                 focus = 0;

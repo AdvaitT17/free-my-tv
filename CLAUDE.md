@@ -61,7 +61,10 @@ before you do it, and let them do the taps on the TV.
    *Install anyway* (updates don't ask again). On TCL, also `adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"`
    (some firmware calls the operation `APP_AUTO_START`; this tries both):
    TCL's `TclAppBoot` blocks background jobs by default, so the switch (and the watchdog) never run. The log shows
-   `forbid bind service ... ModeJob`. Some TCL firmware has neither (a 2024 MediaTek Google TV, Android 14, has no
+   `forbid bind service ... ModeJob`. An uninstall takes the permission back (moving from their own build to the
+   release means uninstalling, #375), so run it after every new install. When a switch's job hasn't started 10 s after
+   the request, the settings screen says so instead of showing *Original* again, and on TCL it shows this command
+   (`ModeJob.started`, #364). Some TCL firmware has neither (a 2024 MediaTek Google TV, Android 14, has no
    `TclAppBoot`): both names answer `Unknown operation string`, and nothing needs allowing.
    Some TCL firmware (a "Smart TV Pro", Realtek RTD2880, Android 11, build `RP1A200622.001`; the same TV as #264) also
    has a second, separate background killer, `TGuard` (`com.tcl.guard`), which kills the app's processes about a second

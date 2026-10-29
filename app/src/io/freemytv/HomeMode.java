@@ -232,11 +232,11 @@ final class HomeMode {
 
     // MARK: - Requests (from any process)
 
-    /** Asks the main process to switch (the settings screen calls this). */
-    static void request(Context c, String mode) {
+    /** Asks the main process to switch (the settings screen calls this); the stamp tells when it started (ModeJob.started). */
+    static long request(Context c, String mode) {
         // Back to Free My TV before Original's revoke ran: it would stop the app mid-switch, and isn't wanted any more.
         if (FREE.equals(mode)) ModeJob.cancel(c, ModeJob.REVOKE_WATCH);
-        ModeJob.schedule(c, ModeJob.APPLY, mode, 0);
+        return ModeJob.schedule(c, ModeJob.APPLY, mode, 0);
     }
 
     /** Our home screen crashed 3 times in 5 minutes: give the home screen back to the TV's own (asked by :home). */
