@@ -289,8 +289,14 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
 - Continue Watching gets `READ_TV_LISTINGS` with `pm grant` through the TV's own ADB only when picked in Home Settings;
   *Original* revokes it with `pm revoke`. Watch Next pictures load only from the TV (`content://`, `android.resource://`),
   never from the network. The app talks only to TMDB, Open-Meteo, Binance, Watchmode (with a `watchmode_key`), your Plex
-  server (with a `plex_url`), your Immich server (with `immich_server` and its key) and GitHub's releases (Updates): new
-  sources (such as Stremio) must not add network calls without the owner's OK.
+  server (with a `plex_url`), your Immich server (with `immich_server` and its key), Trakt (with a `trakt_client_id`,
+  once the person signs in on the TV) and GitHub's releases (Updates): new sources (such as Stremio) must not add
+  network calls without the owner's OK.
+- Trakt (`Trakt`, Google TV only) needs the person's own API app: `trakt_client_id` (the Client ID only: device code
+  with PKCE, so no secret is built in). Until they sign in on the Picks screen, nothing talks to `api.trakt.tv`. The
+  tokens stay in `:home`'s private `trakt` preferences, are never logged and never follow a redirect, and only `:home`
+  uses them (`Trakt.available()`): on Android 11 to 12L the screensaver's main process has no Trakt, and the saved list
+  keeps the account it was made with (`traktStamp`, 0 there), so `:home` fetches again when it finds one made without.
 - On-screen text: `Ui.tr("English")`, translated from `app/assets/i18n/<lang>.json` (keyed by the English; one
   HashMap lookup, English when a language lacks it). Text built at runtime is a pattern: `Ui.trf("{n} min ago", "n", 12)`,
   never concatenated words. A key `"context|Text"` is the same English where a language may need another word

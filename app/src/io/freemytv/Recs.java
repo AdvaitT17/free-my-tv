@@ -583,8 +583,11 @@ final class Recs {
         if (services.isEmpty()) throw new IOException(NO_APPS);
         // Signed in to Trakt: what they're in the middle of comes first, then their watchlist and Trakt's
         // recommendations; what they've watched stays out. Trakt failing leaves the picks as they'd be without it.
+        // The list keeps the account it was made with (0: none, and always outside :home), so a list the screensaver's
+        // process made on Android 11 to 12L is fetched again when :home starts with it.
+        long account = Trakt.stamp(context);
         Trakt.Lists trakt = null;
-        if (Trakt.signedIn(context)) {
+        if (account != 0) {
             try {
                 trakt = Trakt.lists(context);
             } catch (Exception e) {
@@ -682,6 +685,7 @@ final class Recs {
         alternate(list, seen, newMovies, newShows, ours + POOL);
         if (list.isEmpty()) throw new IOException("TMDB returned no recommendations");
         picks = list;
+        traktStamp = account;
         period = p;
         listAt = System.currentTimeMillis();
         listLanguage = Ui.language;
