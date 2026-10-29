@@ -491,6 +491,7 @@ final class HomeMode {
                     AppLog.w("remote buttons service: " + e.getMessage());
                 }
             }
+            wakeWatch(adb, true);
             notice(c, Ui.trf("Free My TV is on: new home screen and screensaver, {n} apps turned off.", "n", disabled.size()));
             busy(c, Ui.tr("Measuring Free My TV…"));
             measure(c, adb, FREE, false);
@@ -546,6 +547,7 @@ final class HomeMode {
             } catch (IOException e) {
                 AppLog.w("remote buttons service: " + e.getMessage());
             }
+            wakeWatch(adb, false);
             SleepTimer.stop(c);
             adb.shell("appops set " + PKG + " SYSTEM_ALERT_WINDOW default");   // SleepOverlay's, if it was allowed
             Capabilities.forget(c, Capabilities.OVERLAY);                       // asked again next time
@@ -656,6 +658,7 @@ final class HomeMode {
                 record(adb, stillOff);
                 // The screensaver first: if that fails, the revert isn't marked done and the next try does it again.
                 restoreScreensaver(adb, s);
+                wakeWatch(adb, false);
                 SleepTimer.stop(app);   // its row shows Unavailable from now on
                 try {
                     nowPlaying(app, adb, false);   // and so does Now Playing's
@@ -797,6 +800,7 @@ final class HomeMode {
                     adb.shell("cmd package set-home-activity " + HOME_ACTIVITY);
                     fixed.add(Ui.tr("the home screen"));
                 }
+                wakeWatch(adb, !reverted);   // again after a restart, which ends it (running already: left alone)
                 // Whole component names: ".ScreensaverAlone" (Android 11 to 12L) contains ".Screensaver" (the others).
                 List<String> savers = Arrays.asList(adb.shell("settings get secure screensaver_components").trim().split(","));
                 if (Config.SCREENSAVER && !reverted && !savers.contains(DREAM)) {
@@ -883,6 +887,50 @@ final class HomeMode {
         if (!pkg.matches("[\\w.]*")) pkg = "";
         adb.shell("setprop " + JM_HOME + " '" + pkg + "'");
         return pkg.equals(jmHome(adb));
+    }
+
+    // MARK: - Hikeen boards: back from standby (#367)
+
+    /**
+     * Realtek TVs on Hikeen boards (Romsat, KIVI; Android 9) force-stop the app in front as they go to standby, from a
+     * hook in ActivityManager (its `mLastPackageName`): that finishes our home screen, and the TV wakes on Realtek's
+     * black FallbackHome until Home is pressed. The force-stop also cancels the app's jobs and alarms, so nothing in the
+     * app can answer. This loop runs in adb's shell instead (uid 2000: the hook and com.hikeen.cleanmaster leave it
+     * alone): at each "Unblocked screen on" in the system log it looks for FallbackHome in front for 3 seconds, and only
+     * then opens the default home screen, so an input or an app the TV wakes into stays. The switch and the boot check
+     * start it (a restart ends it); Original and the watchdog's revert stop it. Its name is in its command lines, so
+     * pgrep and pkill find only it: the board runs a root logcat of its own, which pkill may not touch.
+     */
+    private static final String WAKE = "freemytv-wake";
+    /** Matches WAKE but not the command line that asks for it ("[e]" isn't "e"). */
+    private static final String WAKE_MATCH = "'freemytv-wak[e]'";
+    private static final String WAKE_LOOP = "trap \"\" HUP; logcat -b system -T 1 -s DisplayPowerController:I " + WAKE + ":S"
+            + " | while read -r line; do case \"$line\" in *\"Unblocked screen on\"*) for i in 1 2 3; do sleep 1;"
+            + " if dumpsys activity activities | grep ResumedActivity | grep -q FallbackHome; then"
+            + " am start -a android.intent.action.MAIN -c android.intent.category.HOME; break; fi; done;; esac; done";
+
+    /** Starts the loop on a Hikeen board, once, or stops it. Only logs: what called it goes on either way. */
+    private static void wakeWatch(Adb adb, boolean on) {
+        try {
+            if (!on) {
+                if (!wakeRunning(adb)) return;
+                adb.shell("pkill -f " + WAKE_MATCH);
+                AppLog.w("wake watch off");
+                return;
+            }
+            if (!adb.shell("pm list packages com.hikeen.").contains("package:com.hikeen.") || wakeRunning(adb)) return;
+            // HUP ignored from the start: when this shell ends, the kernel sends one to what it started, and the loop
+            // isn't in a session of its own until setsid runs.
+            adb.shell("trap \"\" HUP; setsid sh -c '" + WAKE_LOOP + "' " + WAKE + " </dev/null >/dev/null 2>&1 &");
+            AppLog.w(wakeRunning(adb) ? "wake watch on: the home screen comes back after standby (#367)" : "wake watch didn't start");
+        } catch (IOException e) {
+            AppLog.w("wake watch: " + e.getMessage());
+        }
+    }
+
+    /** Only process numbers count: a TV without pgrep answers with an error. */
+    private static boolean wakeRunning(Adb adb) throws IOException {
+        return adb.shell("pgrep -f " + WAKE_MATCH).trim().matches("\\d+(\\s+\\d+)*");
     }
 
     // MARK: - Continue Watching's permission

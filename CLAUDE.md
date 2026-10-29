@@ -442,6 +442,14 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   (`HomeApps.fireInput`). Live TV opens `com.amazon.tv.livetv/.DttIconWrapperActivity`, the antenna's entry.
   A Fire OS TV restarts quietly into standby when turned off (QHB) once it booted from power; after a reboot from
   software (`adb reboot`) every power-off restarts it with the screen on, until it's unplugged for 30 seconds.
+- Realtek TVs on Hikeen boards (Romsat `D50A114D-U-T2-S`, KIVI; Android 9 tested; their `com.hikeen.*` apps tell
+  them) force-stop the app in front as they go to standby (a hook in ActivityManager), so the TV woke on Realtek's
+  black `FallbackHome` until Home was pressed, and nothing in the app survives the force-stop (#367).
+  `HomeMode.wakeWatch` starts a shell loop through the TV's ADB (uid 2000, which the hook and `com.hikeen.cleanmaster`
+  leave alone): it reads `DisplayPowerController`'s "Unblocked screen on" in the system log and opens the default home
+  only while `FallbackHome` is in front. The switch and the boot check start it (a restart ends it), Original and the
+  watchdog's revert stop it; `adb shell pgrep -f 'freemytv-wak[e]'` shows it. Leave `cleanmaster` on: the loop doesn't
+  need it off.
 - After any change, `./build.sh` must end with `Built FreeMyTV.apk`.
 - LG and Samsung (`web/`): plain ES5 JavaScript and CSS without variables, grid or backdrop-filter, since older TVs
   (webOS 3 and 4, Tizen 3) run a Chromium from 2015 to 2017 (`tools/check.sh` greps for all of these); only transform
