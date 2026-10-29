@@ -497,8 +497,10 @@ final class Ui {
     /**
      * The catalogue's pattern for a clock key when it already writes the chosen clock (24-hour without "a", or 12-hour),
      * so each language keeps its own form ("20h", "20 Uhr", "오후 8시"); else the locale's pattern for the other one.
+     * Automatic keeps each language's own clock, as before the Clock row: only English follows the TV's setting (#250).
      */
     private static DatePattern clockPattern(String key, String skeleton24, String skeleton12) {
+        if (Prefs.clockFormat().equals("auto") && !language.equals("en")) return datePattern(key);
         boolean h24 = h24();
         boolean catalogue24 = tr(key).replaceAll("'[^']*'", "").matches(".*[Hk].*");
         return catalogue24 == h24 ? datePattern(key) : timePattern(h24 ? skeleton24 : skeleton12);
