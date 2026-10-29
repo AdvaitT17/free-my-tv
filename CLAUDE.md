@@ -173,6 +173,8 @@ Developer Mode; Samsung's home screen stays. Two ways:
    connection when the TV's Host PC IP isn't this computer's current one); it only reports success
    when the TV says `install completed` (`cmd_ret:0` comes after failures too). `--uninstall` removes
    it; some TVs' sdbd doesn't answer that, and then it's removed on the TV (Apps, Settings, Free My TV, Delete).
+   A bare `install failed[118]` (Tizen 2.4 gives no reason) can be a copy left by an earlier failed install, signed
+   with another certificate and not shown on the TV: `--uninstall`, then install again (a 2016 KU6640, #349).
    With Samsung's tools instead: `sdb connect <IP>`, `tizen install -n FreeMyTV-tizen.wgt -t <serial from sdb
    devices>` and `tizen run -p FreeMyTVio.FreeMyTV -t <serial>`. Updates need the same certificate: the TV refuses
    one signed by another (uninstall first). A retail TV's sdbd only takes files (`filesync_support:push`): nothing
