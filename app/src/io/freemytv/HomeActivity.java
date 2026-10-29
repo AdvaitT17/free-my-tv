@@ -76,7 +76,7 @@ public class HomeActivity extends Activity {
             return;
         }
         long now = SystemClock.uptimeMillis();
-        boolean twice = Prefs.homeTwice() && lastHome != 0 && now - lastHome < TWICE_MS;
+        boolean twice = Prefs.recents().equals("home") && lastHome != 0 && now - lastHome < TWICE_MS;
         lastHome = twice ? 0 : now;
         if (twice) home.showRecents();
         else home.reset(true);

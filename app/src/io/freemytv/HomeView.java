@@ -152,10 +152,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         @Override public boolean bounds(int id, Rect out) { return a11yBounds(id, out); }
         @Override public int focused() { return a11yFocused(); }
         @Override public void focus(int id) { a11yFocus(id); }
-        @Override public void click(int id) { activate(); }
+        @Override public void click(int id) { if (recentsOpen()) recents.openFocused(); else activate(); }
         @Override public boolean clickable(int id) { return (id - 1) / 1000 != WIDGETS; }
         @Override public boolean holdable(int id) { return a11yHolds(id); }
-        @Override public void hold(int id) { if (sheetOpen) a11yHold(); else if (canReorder()) startReorder(); else showMenu(); }
+        @Override public void hold(int id) { if (recentsOpen()) recents.closeFocused(); else if (sheetOpen) a11yHold(); else if (canReorder()) startReorder(); else showMenu(); }
     });
     private final RectF a11yRect = new RectF();
     private final Layer sky, heroLayer, status, platter, tiles, drawerLayer, sheetLayer, toastLayer, menuLayer, recentLayer;
@@ -2931,11 +2931,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (menuOpen) return menuKey(e);
         boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
         if (recents != null && recents.visible()) {
+            int was = recents.focus();
             boolean handled = recents.key(e);
             recentLayer.invalidate();
+            if (recents.focus() != was) spoken.focusMoved();
+            if (!recents.visible() || recents.count() == 0) spoken.readAgain();
             return handled;
         }
-        if (down && e.getKeyCode() == KeyEvent.KEYCODE_APP_SWITCH) {
+        if (down && e.getKeyCode() == KeyEvent.KEYCODE_APP_SWITCH && !Prefs.recents().equals("off")) {
             openRecents();
             return true;
         }
@@ -3154,7 +3157,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                         }
                     });
                 }
-                @Override public void repaint() { recentLayer.postInvalidate(); handler.post(HomeView.this::wake); }
+                @Override public void repaint() {
+                    recentLayer.postInvalidate();
+                    handler.post(() -> { wake(); spoken.readAgain(); });   // the list arrived: TalkBack reads the cards
+                }
             }, k);
         }
         ScreenBlur.capture(activity, handler, blurred -> {
@@ -3162,6 +3168,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             recents.open();
             recentLayer.setVisibility(VISIBLE);
             recentLayer.invalidate();
+            spoken.readAgain();
             wake();
         });
     }
@@ -3489,7 +3496,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     // MARK: - TalkBack: every reachable item as a virtual node (Spoken). Id = group * 1000 + index + 1.
 
     /** The drawer's weather (0) and quotes (1) cards: read by TalkBack, never focused by the remote. */
-    private static final int GRID = 9, WIDGETS = 8, MENU_ITEMS = 10;
+    private static final int GRID = 9, WIDGETS = 8, MENU_ITEMS = 10, RECENT_CARDS = 11;
+
+    private boolean recentsOpen() {
+        return recents != null && recents.visible();
+    }
 
     private static int a11yId(int group, int index) {
         return group * 1000 + index + 1;
@@ -3500,6 +3511,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void a11yItems(List<Integer> out) {
+        if (recentsOpen()) {   // it covers the screen: only its cards are read
+            for (int i = 0; i < recents.count(); i++) out.add(a11yId(RECENT_CARDS, i));
+            return;
+        }
         if (menuOpen) {
             for (int i = 0; i < menuOptions.length; i++) out.add(a11yId(MENU_ITEMS, i));
             return;
@@ -3520,6 +3535,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private String a11yText(int id) {
         int group = (id - 1) / 1000, i = (id - 1) % 1000;
         switch (group) {
+            case RECENT_CARDS: return recentsOpen() ? recents.spoken(i) : "";
             case MENU_ITEMS:
                 if (!menuOpen || i >= menuOptions.length) return "";
                 return (i == 0 && menuItem != null ? menuItem.title + ". " : "") + menuOptions[i] + ", "
@@ -3557,6 +3573,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         int group = (id - 1) / 1000, i = (id - 1) % 1000;
         float dy;
         switch (group) {
+            case RECENT_CARDS:
+                if (!recentsOpen() || !recents.bounds(i, a11yRect)) return false;
+                dy = 0;
+                break;
             case MENU_ITEMS:
                 if (!menuOpen || i >= menuOptions.length) return false;
                 menuRow(i, a11yRect);
@@ -3615,6 +3635,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** What holding OK does on an item, TalkBack offers as a long click. */
     private boolean a11yHolds(int id) {
         int group = (id - 1) / 1000, i = (id - 1) % 1000;
+        if (group == RECENT_CARDS) return recentsOpen() && recents.stoppable(i);   // TalkBack's long click closes it, as ▲ does
         if (group == GRID) return canToggleShelf(i);
         if (group == Z_SHELF) {   // TalkBack's long click lifts the app, as holding OK does
             return !reordering && !menuOpen && !sheetOpen && shelf.size() > 1 && i < shelf.size()
@@ -3624,6 +3645,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private int a11yFocused() {
+        if (recentsOpen()) return recents.count() == 0 ? -1 : a11yId(RECENT_CARDS, recents.focus());
         if (menuOpen) return a11yId(MENU_ITEMS, menuIndex);
         if (sheetOpen) return others.isEmpty() ? -1 : a11yId(GRID, gridIndex);
         switch (zone) {
@@ -3672,6 +3694,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void a11yFocus(int id) {
         wake();
         int group = (id - 1) / 1000, i = (id - 1) % 1000;
+        if (recentsOpen()) {
+            if (group == RECENT_CARDS) recents.setFocus(i);
+            recentLayer.invalidate();
+            return;
+        }
         if (menuOpen) {
             if (group == MENU_ITEMS && i < menuOptions.length && i != menuIndex) moveMenu(i - menuIndex);
             return;

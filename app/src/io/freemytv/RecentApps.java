@@ -55,12 +55,16 @@ final class RecentApps {
     private boolean open, loading;
     private int focus;
     private long usedKb, totalKb;
-    private String message;
+    private String message, meterText = "";
+    /** Each open() starts a load; only the newest one's list is kept. */
+    private int generation;
 
     private static final class Card {
         HomeApps.Item item;
         Paint paint;                 // the card's art as a shader, made once
         int glow;                    // the art's average color
+        RadialGradient glowShader;   // the glow behind it, made with the paint
+        boolean stoppable;           // ▲ may close it (HomeMode.mayTurnOff, and not a running accessibility service or keyboard)
         final Spring gone = new Spring(0.28f, 0.9f, 0);
         boolean closing;
     }
@@ -92,7 +96,8 @@ final class RecentApps {
         open = true;
         readMemory();
         meter.snap(total() > 0 ? (float) usedKb / totalKb : 0);
-        new Thread(this::load, "recent-apps").start();
+        final int gen = ++generation;
+        new Thread(() -> load(gen), "recent-apps").start();
     }
 
     void close() {
@@ -109,6 +114,34 @@ final class RecentApps {
         return totalKb;
     }
 
+    /** How many cards there are, and what TalkBack reads for one. */
+    int count() {
+        return open ? cards.size() : 0;
+    }
+
+    int focus() {
+        return focus;
+    }
+
+    void setFocus(int i) {
+        if (i >= 0 && i < cards.size()) focus = i;
+    }
+
+    String spoken(int i) {
+        if (i >= cards.size()) return "";
+        Card c = cards.get(i);
+        return c.item.label + ", " + Ui.trf("{i} of {n}", "i", i + 1, "n", cards.size())
+                + (c.stoppable ? ". " + Ui.tr("Press ▲ on an app to close it") : "");
+    }
+
+    /** OK on the focused card (TalkBack's click too). */
+    void openFocused() {
+        if (focus >= cards.size()) return;
+        HomeApps.Item item = cards.get(focus).item;
+        close();
+        host.open(item);
+    }
+
     private void readMemory() {
         ActivityManager am = (ActivityManager) activity.getSystemService(Activity.ACTIVITY_SERVICE);
         ActivityManager.MemoryInfo mi = new ActivityManager.MemoryInfo();
@@ -116,15 +149,20 @@ final class RecentApps {
         totalKb = mi.totalMem / 1024;
         usedKb = (mi.totalMem - mi.availMem) / 1024;
         meter.target = totalKb > 0 ? Math.max(0, Math.min(1, (float) usedKb / totalKb)) : 0;
+        meterText = Ui.trf("RAM {used} used of {total}", "used", gigabytes(usedKb), "total", gigabytes(totalKb));   // not per frame
     }
 
     /** The open apps, newest first: the tasks Android keeps (with an activity, or with a process still running). */
-    private void load() {
+    private void load(int gen) {
         List<Card> found = new ArrayList<>();
         String error = null;
         try (Adb adb = Adb.connect(activity.getApplicationContext(), 10_000, null)) {
             String recents = adb.shell("dumpsys activity recents");
             String ps = adb.shell("ps -A -o NAME");
+            // Android turns a stopped app's accessibility service off for good, and the keyboard is the only way to type.
+            Set<String> keep = new HashSet<>();
+            for (String s : adb.shell("settings get secure enabled_accessibility_services").split(":")) keep.add(owner(s));
+            keep.add(owner(adb.shell("settings get secure default_input_method")));
             Set<String> alive = new HashSet<>();
             for (String line : ps.split("\n")) alive.add(line.trim());
             Map<String, String> launchable = new HashMap<>();
@@ -141,15 +179,18 @@ final class RecentApps {
                 if (!(hasActivity || running) || name.equals(activity.getPackageName()) || !launchable.containsKey(name) || HomeApps.isHidden(name) || !seen.add(name)) continue;
                 Card c = new Card();
                 c.item = HomeApps.recentItem(activity, name, launchable.get(name));
+                c.stoppable = HomeMode.mayTurnOff(name) && !keep.contains(name);
                 found.add(c);
             }
-        } catch (IOException e) {
-            AppLog.w("recent apps: " + e.getMessage());
+            for (Card c : found) shade(c);
+        } catch (IOException | RuntimeException e) {   // a crash here would take the home screen down (and count for the watchdog)
+            AppLog.w("recent apps: " + e);
+            found.clear();
             error = Ui.tr("Couldn't read the recent apps. Allow USB debugging for Free My TV.");
         }
         final String shownError = error;
-        for (Card c : found) shade(c);
         activity.runOnUiThread(() -> {
+            if (gen != generation) return;   // opened again since: the newer load answers
             loading = false;
             message = shownError;
             cards.clear();
@@ -170,21 +211,33 @@ final class RecentApps {
         Bitmap tiny = Bitmap.createScaledBitmap(art, 1, 1, true);
         c.glow = tiny.getPixel(0, 0) | 0xFF000000;
         if (tiny != art) tiny.recycle();
+        c.glowShader = new RadialGradient(0, 0, GLOW * k, new int[] {c.glow, c.glow & 0x00FFFFFF}, new float[] {0.15f, 1}, Shader.TileMode.CLAMP);
     }
 
-    private void closeFocused() {
+    /** "com.app/.Service" or "com.app/com.app.Ime" → "com.app"; empty for "null" or nothing. */
+    private static String owner(String component) {
+        String s = component.trim();
+        int slash = s.indexOf('/');
+        return slash > 0 ? s.substring(0, slash) : "";
+    }
+
+    boolean stoppable(int i) {
+        return i < cards.size() && cards.get(i).stoppable;
+    }
+
+    void closeFocused() {
         if (focus >= cards.size()) return;
         final Card c = cards.get(focus);
         if (c.closing) return;
         final String pkg = c.item.pkg;
-        if (!HomeMode.mayStop(pkg)) return;   // Android's own pieces stay
+        if (!c.stoppable) return;
         c.closing = true;
         c.gone.target = 1;
         new Thread(() -> {
             try (Adb adb = Adb.connect(activity.getApplicationContext(), 10_000, null)) {
                 adb.shell("am force-stop " + pkg);
-            } catch (IOException e) {
-                AppLog.w("close app: " + e.getMessage());
+            } catch (IOException | RuntimeException e) {
+                AppLog.w("close app: " + e);
             }
             try { Thread.sleep(900); } catch (InterruptedException ignored) { }
             activity.runOnUiThread(() -> { readMemory(); host.repaint(); });
@@ -240,7 +293,7 @@ final class RecentApps {
                 drawCard(c, cards.get(i), i - at, a);
             }
         }
-        label(c, Ui.tr("Press ▲ on an app to close it"), CENTER_X * k, 975 * k, Ui.alpha(0xFFFFFFFF, 0.55f * a), 22 * k, Paint.Align.CENTER);
+        if (focus < count && cards.get(focus).stoppable) label(c, Ui.tr("Press ▲ on an app to close it"), CENTER_X * k, 975 * k, Ui.alpha(0xFFFFFFFF, 0.55f * a), 22 * k, Paint.Align.CENTER);
     }
 
     private void drawMeter(Canvas c, float a) {
@@ -251,8 +304,7 @@ final class RecentApps {
         rim.setColor(Ui.alpha(0xFFFFFFFF, 0.28f * a));
         r.inset(k, k);
         c.drawRoundRect(r, 38 * k, 38 * k, rim);
-        String used = gigabytes(usedKb), total = gigabytes(totalKb);
-        label(c, Ui.trf("RAM {used} used of {total}", "used", used, "total", total), left + 38 * k, 99 * k, Ui.alpha(0xFFFFFFFF, a), 25 * k, Paint.Align.LEFT);
+        label(c, meterText, left + 38 * k, 99 * k, Ui.alpha(0xFFFFFFFF, a), 25 * k, Paint.Align.LEFT);
         float barW = 178 * k, barX = right - 38 * k - barW, barY = (top + bottom) / 2;
         r.set(barX, barY - 5 * k, barX + barW, barY + 5 * k);
         fill.setColor(Ui.alpha(0xFFFFFFFF, 0.28f * a));
@@ -266,22 +318,32 @@ final class RecentApps {
         return String.format(Ui.locale(), "%.1f GB", kb / 1048576f);
     }
 
-    /** `d` places from the focused card (negative: to its left). */
-    private void drawCard(Canvas c, Card card, float d, float a) {
+    /** Where card `i` is on screen now (TalkBack). */
+    boolean bounds(int i, RectF out) {
+        if (!open || i >= cards.size()) return false;
+        place(cards.get(i), i - scroll.value, out);
+        return true;
+    }
+
+    /** Card `d` places from the focused one (negative: to its left), into `out`; returns its scale. */
+    private float place(Card card, float d, RectF out) {
         float ad = Math.abs(d);
         float s = interpolate(SCALE, ad), w = CARD_W * s, h = CARD_H * s;
         float left = interpolate(LEFT, ad);
         float x0 = d >= 0 ? left : 1920 - (left + w);   // to the left they mirror
-        float gone = Ui.clamp(card.gone.value);
-        float alpha = a * (1 - gone);
-        float lift = -260 * gone;
-        float top = CENTER_Y - h / 2 + lift;
-        r.set(x0 * k, top * k, (x0 + w) * k, (top + h) * k);
+        float top = CENTER_Y - h / 2 - 260 * Ui.clamp(card.gone.value);   // a closing card rises
+        out.set(x0 * k, top * k, (x0 + w) * k, (top + h) * k);
+        return s;
+    }
+
+    private void drawCard(Canvas c, Card card, float d, float a) {
+        float ad = Math.abs(d);
+        float s = place(card, d, r);
+        float alpha = a * (1 - Ui.clamp(card.gone.value));
         float rad = 30 * k * s;
-        if (ad < 0.5f && card.glow != 0) {   // the app's color, soft, behind the focused card
+        if (ad < 0.5f && card.glowShader != null) {   // the app's color, soft, behind the focused card
             float gl = (1 - ad * 2) * alpha;
-            RadialGradient glow = glowShader(card.glow);
-            fill.setShader(glow);
+            fill.setShader(card.glowShader);
             fill.setAlpha(Math.round(255 * 0.75f * gl));
             c.save();
             c.translate(r.left + 40 * k, r.centerY());
@@ -309,17 +371,6 @@ final class RecentApps {
             c.drawRoundRect(r, rad, rad, rim);
         }
         label(c, card.item.label, r.left + 12 * k, r.top - 16 * k, Ui.alpha(0xFFFFFFFF, 0.9f * alpha), 22 * k, Paint.Align.LEFT);
-    }
-
-    private final Map<Integer, RadialGradient> glows = new HashMap<>();
-
-    private RadialGradient glowShader(int color) {
-        RadialGradient g = glows.get(color);
-        if (g == null) {
-            g = new RadialGradient(0, 0, GLOW * k, new int[] {color, color & 0x00FFFFFF}, new float[] {0.15f, 1}, Shader.TileMode.CLAMP);
-            glows.put(color, g);
-        }
-        return g;
     }
 
     private static float interpolate(float[] table, float at) {
@@ -352,11 +403,7 @@ final class RecentApps {
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_NUMPAD_ENTER:
-                if (e.getRepeatCount() == 0 && focus < cards.size()) {
-                    HomeApps.Item item = cards.get(focus).item;
-                    close();
-                    host.open(item);
-                }
+                if (e.getRepeatCount() == 0) openFocused();
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
             case KeyEvent.KEYCODE_BACK:

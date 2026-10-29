@@ -335,7 +335,7 @@ final class HomeApps {
         items.add(shortcut(ALL_APPS, "all", Ui.tr("All Apps"), "apps"));
         items.add(shortcut(SETTINGS, "settings", Ui.tr("Home Settings"), "settings"));
         items.add(shortcut(ANDROID_SETTINGS, "tv-settings", Ui.tr("TV Settings"), "tv_settings"));
-        items.add(shortcut(RECENTS, "recents", Ui.tr("Recent Apps"), "recents"));
+        if (!Prefs.recents().equals("off")) items.add(shortcut(RECENTS, "recents", Ui.tr("Recent Apps"), "recents"));   // opt-in (Home Settings)
         // HY300 projectors (Hotack, Allwinner H713): keystone and focus live in the maker's settings app, and the
         // stock home screen was the only way to its Miracast receiver. Each shows only where the TV has it.
         // The Amlogic ones (txhd2) carry the HTC app too, but its keystone crashes there (SurfaceFlinger refuses code
