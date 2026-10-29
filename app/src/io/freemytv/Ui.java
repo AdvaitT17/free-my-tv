@@ -252,7 +252,6 @@ final class Ui {
         plurals = PluralRules.forLocale(locale);
         language = lang;
         DATE_PATTERNS.clear();
-        DATE_PATTERNS_24.clear();
         TIME_PATTERNS.clear();
         generation++;
     }
@@ -428,21 +427,16 @@ final class Ui {
         return new BitmapShader(b, Shader.TileMode.REPEAT, Shader.TileMode.CLAMP);
     }
 
-    private static final Map<String, DatePattern> DATE_PATTERNS = new HashMap<>(), DATE_PATTERNS_24 = new HashMap<>();
-    /** English follows the TV's 12/24-hour setting (Settings → System → Date & time); other languages have their own. */
-    private static final String[][] TWENTY_FOUR = {{"format|h:mm", "HH:mm"}, {"format|h:mm a", "HH:mm"}, {"format|h a", "HH:mm"}};
+    private static final Map<String, DatePattern> DATE_PATTERNS = new HashMap<>();
 
     /**
      * The catalogue's SimpleDateFormat pattern for a "format|..." key and its locale, checked once per language: a pattern
      * SimpleDateFormat rejects falls back to the English one, so a bad catalogue can't crash the screens drawing the date.
      */
     static synchronized DatePattern datePattern(String key) {
-        boolean h24 = language.equals("en") && Prefs.clock24();
-        Map<String, DatePattern> patterns = h24 ? DATE_PATTERNS_24 : DATE_PATTERNS;
-        DatePattern pattern = patterns.get(key);
+        DatePattern pattern = DATE_PATTERNS.get(key);
         if (pattern == null) {
             String text = tr(key);
-            if (h24) for (String[] f : TWENTY_FOUR) if (f[0].equals(key)) text = f[1];
             Locale loc = locale();
             try {
                 new SimpleDateFormat(text, loc);
@@ -452,7 +446,7 @@ final class Ui {
                 loc = Locale.US;
             }
             pattern = new DatePattern(text, loc);
-            patterns.put(key, pattern);
+            DATE_PATTERNS.put(key, pattern);
         }
         return pattern;
     }
@@ -495,24 +489,34 @@ final class Ui {
     }
 
     /** 24-hour: "24" or "12" as chosen in the settings, or the TV's own setting for "auto". */
-    private static boolean h24() {
+    static boolean h24() {
         String format = Prefs.clockFormat();
         return format.equals("24") || (format.equals("auto") && Prefs.clock24());
     }
 
-    /** "21:47", "9:47" or "9:47 PM", as chosen in the settings; Automatic follows the TV's own 12/24-hour setting. */
+    /**
+     * The catalogue's pattern for a clock key when it already writes the chosen clock (24-hour without "a", or 12-hour),
+     * so each language keeps its own form ("20h", "20 Uhr", "오후 8시"); else the locale's pattern for the other one.
+     */
+    private static DatePattern clockPattern(String key, String skeleton24, String skeleton12) {
+        boolean h24 = h24();
+        boolean catalogue24 = tr(key).replaceAll("'[^']*'", "").matches(".*[Hk].*");
+        return catalogue24 == h24 ? datePattern(key) : timePattern(h24 ? skeleton24 : skeleton12);
+    }
+
+    /** "21:47" (Portuguese), "9:47" (English in 12 hours) or "9:47 PM", as chosen in the settings. */
     static String clock(long now) {
-        return timePattern(h24() ? "Hm" : "hmma").format(now);
+        return clockPattern("format|h:mm", "Hm", "hmma").format(now);
     }
 
-    /** "5:21" (sunrise and sunset), following the clock's 12/24-hour choice. */
+    /** "5:21 PM" (sunrise and sunset), following the clock's 12/24-hour choice. */
     static String time(long at) {
-        return once(h24() ? "time24" : "time", at, () -> timePattern(h24() ? "Hm" : "hmma").format(at));
+        return once(h24() ? "time24" : "time", at, () -> clockPattern("format|h:mm a", "Hm", "hmma").format(at));
     }
 
-    /** An hourly forecast label ("8 PM", "20"), following the clock's 12/24-hour choice. */
+    /** An hourly forecast label ("8 PM", "20h"), following the clock's 12/24-hour choice. */
     static String hour(long at) {
-        return once(h24() ? "hour24" : "hour", at, () -> timePattern(h24() ? "H" : "ha").format(at));
+        return once(h24() ? "hour24" : "hour", at, () -> clockPattern("format|h a", "Hm", "ha").format(at));
     }
 
     private static final HashMap<String, String> FORMATTED = new HashMap<>();
