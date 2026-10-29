@@ -390,7 +390,7 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   *Recent Apps* (`Prefs.recents()`: `off`, `drawer`, `home`) adds the drawer shortcut and the app-switch key, and `home`
   also two Home presses within 700 ms (`HomeActivity.onNewIntent`); Top Buttons can add it on its own. Only while it's
   open, it reads the list through the TV's ADB (`dumpsys activity recents`, `ps -A -o NAME`), and ▲ runs `am force-stop`.
-  A card may be closed only where `HomeMode.mayTurnOff` allows it and the app holds neither an enabled accessibility
+  A card may be closed only where `HomeMode.mayStop` allows it (`mayTurnOff`, plus Amazon's streaming apps) and the app holds neither an enabled accessibility
   service (Android turns a force-stopped app's service off for good) nor the current keyboard. Its loads carry a
   generation (only the newest answers) and catch every exception: `:home`'s watchdog counts a crash there. It draws
   only while something moves, hides the layers under it once it covers the screen, and TalkBack reads its cards

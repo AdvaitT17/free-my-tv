@@ -200,6 +200,15 @@ final class HomeMode {
         return FACTORY.matcher(pkg).matches();
     }
 
+    /** Amazon's streaming apps, not part of the system on any TV: Recent Apps may close them (mayTurnOff still refuses them). */
+    private static final Set<String> AMAZON_APPS = new HashSet<>(Arrays.asList(
+            "com.amazon.amazonvideo.livingroom", "com.amazon.music.tv"));
+
+    /** Recent Apps' ▲: what may be turned off, and Amazon's streaming apps, which only stop. */
+    static boolean mayStop(String pkg) {
+        return mayTurnOff(pkg) || AMAZON_APPS.contains(pkg) && !PROTECTED.contains(pkg);
+    }
+
     /** Checked before every disable: never the protected list, Amazon's packages, Android's own pieces or a factory menu. */
     static boolean mayTurnOff(String pkg) {
         return !PROTECTED.contains(pkg) && !pkg.startsWith("com.amazon.")

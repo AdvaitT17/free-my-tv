@@ -64,7 +64,7 @@ final class RecentApps {
         Paint paint;                 // the card's art as a shader, made once
         int glow;                    // the art's average color
         RadialGradient glowShader;   // the glow behind it, made with the paint
-        boolean stoppable;           // ▲ may close it (HomeMode.mayTurnOff, and not a running accessibility service or keyboard)
+        boolean stoppable;           // ▲ may close it (HomeMode.mayStop, and not a running accessibility service or keyboard)
         final Spring gone = new Spring(0.28f, 0.9f, 0);
         boolean closing;
     }
@@ -179,7 +179,7 @@ final class RecentApps {
                 if (!(hasActivity || running) || name.equals(activity.getPackageName()) || !launchable.containsKey(name) || HomeApps.isHidden(name) || !seen.add(name)) continue;
                 Card c = new Card();
                 c.item = HomeApps.recentItem(activity, name, launchable.get(name));
-                c.stoppable = HomeMode.mayTurnOff(name) && !keep.contains(name);
+                c.stoppable = HomeMode.mayStop(name) && !keep.contains(name);
                 found.add(c);
             }
             for (Card c : found) shade(c);
