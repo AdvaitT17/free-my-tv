@@ -728,7 +728,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         running = false;
         handler.removeCallbacks(bgFollow);
         cancelReorder(true);
-        if (recents != null) recents.close();
+        if (recents != null) recents.closeNow();
         handler.removeCallbacks(holdStart);
         okHeld = holdArmed = false;
         closeMenu(true);
@@ -761,6 +761,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         wake();
         cancelReorder(!animated);
         closeMenu(!animated);
+        if (recents != null) recents.close();   // Home closes Recent Apps too (twice opens it: HomeActivity)
         zone = Z_SHELF;
         shelfIndex = 0;
         cardIndex = 0;
@@ -3511,8 +3512,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private void a11yItems(List<Integer> out) {
-        if (recentsOpen()) {   // it covers the screen: only its cards are read
-            for (int i = 0; i < recents.count(); i++) out.add(a11yId(RECENT_CARDS, i));
+        if (recentsOpen()) {   // it covers the screen: only its cards are read (or, with none, its message)
+            for (int i = 0; i < Math.max(1, recents.count()); i++) out.add(a11yId(RECENT_CARDS, i));
             return;
         }
         if (menuOpen) {
@@ -3535,7 +3536,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private String a11yText(int id) {
         int group = (id - 1) / 1000, i = (id - 1) % 1000;
         switch (group) {
-            case RECENT_CARDS: return recentsOpen() ? recents.spoken(i) : "";
+            case RECENT_CARDS:
+                if (!recentsOpen()) return "";
+                return recents.count() == 0 ? Ui.tr("Recent Apps") + ". " + recents.emptyText() : recents.spoken(i);
             case MENU_ITEMS:
                 if (!menuOpen || i >= menuOptions.length) return "";
                 return (i == 0 && menuItem != null ? menuItem.title + ". " : "") + menuOptions[i] + ", "
@@ -3574,7 +3577,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float dy;
         switch (group) {
             case RECENT_CARDS:
-                if (!recentsOpen() || !recents.bounds(i, a11yRect)) return false;
+                if (!recentsOpen()) return false;
+                if (recents.count() == 0) recents.emptyBounds(a11yRect);
+                else if (!recents.bounds(i, a11yRect)) return false;
                 dy = 0;
                 break;
             case MENU_ITEMS:
@@ -3645,7 +3650,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     private int a11yFocused() {
-        if (recentsOpen()) return recents.count() == 0 ? -1 : a11yId(RECENT_CARDS, recents.focus());
+        if (recentsOpen()) return a11yId(RECENT_CARDS, recents.count() == 0 ? 0 : recents.focus());
         if (menuOpen) return a11yId(MENU_ITEMS, menuIndex);
         if (sheetOpen) return others.isEmpty() ? -1 : a11yId(GRID, gridIndex);
         switch (zone) {

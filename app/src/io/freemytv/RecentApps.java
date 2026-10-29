@@ -40,7 +40,8 @@ final class RecentApps {
     private static final float[] LEFT = {625, 1035, 1625, 2125};
     private static final float[] SCALE = {1, 0.88f, 0.78f, 0.7f};
     private static final Pattern SIZE = Pattern.compile("sz=(\\d+)");
-    private static final Pattern PACKAGE = Pattern.compile("(?:A=\\d+:|I=)([\\w.]+)");
+    /** The task's affinity ("A=10087:com.netflix.ninja"; Android 8 to 10 write it without the uid) or its intent ("I="). */
+    private static final Pattern PACKAGE = Pattern.compile("(?:A=(?:\\d+:)?|I=)([\\w.]+)");
 
     private final Activity activity;
     private final Host host;
@@ -64,7 +65,7 @@ final class RecentApps {
         Paint paint;                 // the card's art as a shader, made once
         int glow;                    // the art's average color
         RadialGradient glowShader;   // the glow behind it, made with the paint
-        boolean stoppable;           // ▲ may close it (HomeMode.mayStop, and not a running accessibility service or keyboard)
+        boolean stoppable;           // ▲ may close it (HomeMode.mayStop, not an accessibility service's app or the keyboard, nor neededByTv)
         final Spring gone = new Spring(0.28f, 0.9f, 0);
         boolean closing;
     }
@@ -104,6 +105,12 @@ final class RecentApps {
         open = false;
     }
 
+    /** Gone at once (another app came to the front): back home, the switcher isn't seen fading out. */
+    void closeNow() {
+        open = false;
+        shown.snap(0);
+    }
+
     void setBackdrop(Bitmap blurred) {
         backdrop = blurred;
     }
@@ -117,6 +124,16 @@ final class RecentApps {
     /** How many cards there are, and what TalkBack reads for one. */
     int count() {
         return open ? cards.size() : 0;
+    }
+
+    /** What shows (and TalkBack reads) while there are no cards: loading, nothing open, or why it couldn't read them. */
+    String emptyText() {
+        return message != null ? message : loading ? Ui.tr("Looking for open apps…") : Ui.tr("No apps are open.");
+    }
+
+    /** Where that message is, for TalkBack. */
+    void emptyBounds(RectF out) {
+        out.set((CENTER_X - 500) * k, (CENTER_Y - 40) * k, (CENTER_X + 500) * k, (CENTER_Y + 20) * k);
     }
 
     int focus() {
@@ -173,6 +190,8 @@ final class RecentApps {
                 Matcher pkg = PACKAGE.matcher(line);
                 if (!pkg.find()) continue;
                 String name = pkg.group(1);
+                // The affinity can be longer than the package (YouTube's task is "com.google.android.youtube.tv.main").
+                while (!launchable.containsKey(name) && name.indexOf('.') > 0) name = name.substring(0, name.lastIndexOf('.'));
                 Matcher sz = SIZE.matcher(line);
                 boolean hasActivity = sz.find() && Integer.parseInt(sz.group(1)) > 0;
                 boolean running = alive.contains(name);
@@ -183,6 +202,17 @@ final class RecentApps {
                 found.add(c);
             }
             for (Card c : found) shade(c);
+            // As before anything goes off: what the TV's inputs or the remote's Input key need stays (a force-stopped
+            // app gets nothing until it's opened again). Not checked: none of them closes this time.
+            Set<String> closable = new HashSet<>();
+            for (Card c : found) if (c.stoppable) closable.add(c.item.pkg);
+            Set<String> needed;
+            try {
+                needed = closable.isEmpty() ? closable : HomeMode.neededByTv(adb, closable);
+            } catch (IOException e) {
+                needed = null;
+            }
+            for (Card c : found) if (needed == null || needed.contains(c.item.pkg)) c.stoppable = false;
         } catch (IOException | RuntimeException e) {   // a crash here would take the home screen down (and count for the watchdog)
             AppLog.w("recent apps: " + e);
             found.clear();
@@ -261,7 +291,7 @@ final class RecentApps {
                 moving = true;
             }
         }
-        return moving || loading;
+        return moving;   // still while the list loads: repaint() draws it when it comes
     }
 
     void draw(Canvas c, float w, float h) {
@@ -278,8 +308,7 @@ final class RecentApps {
         label(c, Ui.tr("Recent Apps"), 108 * k, 108 * k, Ui.alpha(0xFFFFFFFF, a), 37 * k, Paint.Align.LEFT);
         drawMeter(c, a);
         if (cards.isEmpty()) {
-            String empty = message != null ? message : loading ? Ui.tr("Looking for open apps…") : Ui.tr("No apps are open.");
-            label(c, empty, CENTER_X * k, CENTER_Y * k, Ui.alpha(0xFFFFFFFF, 0.6f * a), 28 * k, Paint.Align.CENTER);
+            label(c, emptyText(), CENTER_X * k, CENTER_Y * k, Ui.alpha(0xFFFFFFFF, 0.6f * a), 28 * k, Paint.Align.CENTER);
             return;
         }
         // Far cards first, the focused one on top.
@@ -389,30 +418,30 @@ final class RecentApps {
     // MARK: - Keys
 
     boolean key(KeyEvent e) {
-        if (e.getAction() != KeyEvent.ACTION_DOWN) return true;
+        boolean down = e.getAction() == KeyEvent.ACTION_DOWN;
         switch (e.getKeyCode()) {
             case KeyEvent.KEYCODE_DPAD_LEFT:
-                if (focus > 0) focus--;
+                if (down && focus > 0) focus--;
                 return true;
             case KeyEvent.KEYCODE_DPAD_RIGHT:
-                if (focus < cards.size() - 1) focus++;
+                if (down && focus < cards.size() - 1) focus++;
                 return true;
             case KeyEvent.KEYCODE_DPAD_UP:
-                closeFocused();
+                if (down) closeFocused();
                 return true;
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_NUMPAD_ENTER:
-                if (e.getRepeatCount() == 0) openFocused();
+                if (down && e.getRepeatCount() == 0) openFocused();
                 return true;
             case KeyEvent.KEYCODE_DPAD_DOWN:
             case KeyEvent.KEYCODE_BACK:
             case KeyEvent.KEYCODE_ESCAPE:
             case KeyEvent.KEYCODE_APP_SWITCH:
-                close();
+                if (down) close();
                 return true;
             default:
-                return true;
+                return false;   // volume, mute, media and the TV's own keys go on to the system, as on the home screen
         }
     }
 }

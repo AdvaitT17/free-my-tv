@@ -137,12 +137,13 @@ final class HomeApps {
     static int maxShelf(Context c) {
         return lowRam(c) ? FEW_APPS : Integer.MAX_VALUE;
     }
-    /** Live TV apps of some brands (the antenna's channels open through the standard Android request first). */
+
     /** An app All Apps leaves out (the TV's own helpers: Safety Guard, T-Solo…): Recent Apps leaves it out too. */
     static boolean isHidden(String pkg) {
         return HIDDEN.contains(pkg);
     }
 
+    /** Live TV apps of some brands (the antenna's channels open through the standard Android request first). */
     static final String[] LIVE_TV_APPS = {"com.tcl.tv", "com.google.android.tv", "com.mediatek.wwtv.tvcenter", "com.sony.dtv.tvx",
             "com.smartdevice.livetv", "com.mediatek.tv.oneworld.tvcenter", "com.amazon.tv.livetv", "com.amazon.mediatek.livetv"};
     /** Kept out of "All Apps" (only hidden, still installed). Add the ones your TV shows that you never use. */
@@ -267,7 +268,10 @@ final class HomeApps {
         List<String> saved = Prefs.topButtons();
         if (saved == null) return TOP_DEFAULT;
         List<String> keys = new ArrayList<>();
-        for (String key : saved) if (TOP_ALL.contains(key) && !keys.contains(key)) keys.add(key);
+        for (String key : saved) {
+            if (key.equals(TOP_RECENTS) && Prefs.recents().equals("off")) continue;   // Recent Apps is off: no button either
+            if (TOP_ALL.contains(key) && !keys.contains(key)) keys.add(key);
+        }
         return keys;
     }
 
@@ -290,7 +294,10 @@ final class HomeApps {
     /** What can go in the top buttons, as {key, name}. */
     static List<String[]> topCandidates() {
         List<String[]> out = new ArrayList<>();
-        for (String key : TOP_ALL) out.add(new String[] {key, topButton(key).label});
+        for (String key : TOP_ALL) {
+            if (key.equals(TOP_RECENTS) && Prefs.recents().equals("off")) continue;   // offered once Recent Apps is on
+            out.add(new String[] {key, topButton(key).label});
+        }
         return out;
     }
 

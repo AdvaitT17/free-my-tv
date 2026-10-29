@@ -391,7 +391,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   also two Home presses within 700 ms (`HomeActivity.onNewIntent`); Top Buttons can add it on its own. Only while it's
   open, it reads the list through the TV's ADB (`dumpsys activity recents`, `ps -A -o NAME`), and ▲ runs `am force-stop`.
   A card may be closed only where `HomeMode.mayStop` allows it (`mayTurnOff`, plus Amazon's streaming apps) and the app holds neither an enabled accessibility
-  service (Android turns a force-stopped app's service off for good) nor the current keyboard. Its loads carry a
+  service (Android turns a force-stopped app's service off for good) nor the current keyboard, and only if
+  `HomeMode.neededByTv` doesn't keep it (the TV's inputs and the remote's Input key, as before a switch). Its loads carry a
   generation (only the newest answers) and catch every exception: `:home`'s watchdog counts a crash there. It draws
   only while something moves, hides the layers under it once it covers the screen, and TalkBack reads its cards
   (`RECENT_CARDS`) instead of the home screen.

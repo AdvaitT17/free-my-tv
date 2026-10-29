@@ -221,7 +221,7 @@ final class HomeMode {
      * the receiver of the remote's Input key and Bluetooth pairing (fusion.android.tv.demo on several MediaTek boards).
      * null when the check didn't finish: then none of them goes off this time.
      */
-    private static Set<String> neededByTv(Adb adb, Set<String> pkgs) throws IOException {
+    static Set<String> neededByTv(Adb adb, Set<String> pkgs) throws IOException {
         Set<String> keep = new HashSet<>();
         if (pkgs.isEmpty()) return keep;
         // Only the package's own requested permissions: a shared user's would match by mistake. A line per package keeps
