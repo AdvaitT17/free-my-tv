@@ -243,8 +243,8 @@ final class Photos {
             if (!sent.renameTo(src)) continue;
             // Named by import time (the order they came is the order the screensaver shows them) and by process (the
             // other one may import in the same millisecond); written as .part first, so a crash leaves no half photo.
-            File out = new File(d, String.format(Locale.US, "%013d-%d.jpg", System.currentTimeMillis() + count,
-                    android.os.Process.myPid()));
+            File out = new File(d, String.format(Locale.US, "%013d-%d%s", System.currentTimeMillis() + count,
+                    android.os.Process.myPid(), original.startsWith(IMMICH) ? IMMICH_END : ".jpg"));
             File part = new File(d, out.getName() + ".part");
             try {
                 Bitmap b = decode(src, W, H);
@@ -267,6 +267,47 @@ final class Photos {
         AppLog.w("photos: imported " + count + ", " + (have + count) + " in all");
         if (count > 0) Prefs.setPhotos(true);   // new photos show, even if they had been turned off
         return count;
+    }
+
+    // MARK: - Immich's (ImmichPhotos)
+
+    /** What ImmichPhotos leaves in the private inbox starts with this; imported, its name ends with IMMICH_END. */
+    static final String IMMICH = "immich-";
+    private static final String IMMICH_END = "-immich.jpg";
+
+    /** Imports what's waiting now, on the caller's thread (ImmichPhotos, between two downloads). */
+    static int importWaiting(Context c) {
+        return importNow(c.getApplicationContext());
+    }
+
+    /** Imported photos on disk (not files(): its cache may not have seen an import in this same second). */
+    static int count(Context c) {
+        File[] all = dir(c).listFiles((d, name) -> name.endsWith(".jpg"));
+        return all == null ? 0 : all.length;
+    }
+
+    /** The photos ImmichPhotos brought, oldest first; tools/photos.py's are never among them. */
+    static List<File> fromImmich(Context c) {
+        File[] all = dir(c).listFiles((d, name) -> name.endsWith(IMMICH_END));
+        List<File> out = new ArrayList<>(all == null ? Collections.<File>emptyList() : Arrays.asList(all));
+        Collections.sort(out);
+        return out;
+    }
+
+    /** When it was imported (its name starts with that time), or 0. */
+    static long importedAt(File f) {
+        try {
+            return Long.parseLong(f.getName().substring(0, 13));
+        } catch (RuntimeException e) {
+            return 0;
+        }
+    }
+
+    /** Takes Immich's away (and what of it still waits), keeping tools/photos.py's. */
+    static void removeImmich(Context c) {
+        for (File f : fromImmich(c)) f.delete();
+        File[] waiting = privateInbox(c).listFiles((d, name) -> name.contains(IMMICH));
+        if (waiting != null) for (File f : waiting) f.delete();
     }
 
     /** Deletes the imported photos and whatever is still waiting, half-sent ones included. */

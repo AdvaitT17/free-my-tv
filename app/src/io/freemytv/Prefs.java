@@ -262,6 +262,19 @@ final class Prefs {
     static boolean photos() { return sp().getBoolean("photos", true); }
     static void setPhotos(boolean on) { put("photos", on); }
 
+    /**
+     * With an Immich server, where My Photos come from: "default" (none of yours: the picks' photos, as without
+     * Immich), "immich" (all its photos) or "album" (photoAlbum, its id; photoAlbumName to show).
+     */
+    static String photoSource() { return sp().getString("photoSource", "immich"); }
+    static String photoAlbum() { return sp().getString("photoAlbum", ""); }
+    static String photoAlbumName() { return sp().getString("photoAlbumName", ""); }
+
+    static void setPhotoSource(String source, String album, String name) {
+        sp().edit().putString("photoSource", source).putString("photoAlbum", album).putString("photoAlbumName", name).apply();
+        version++;
+    }
+
     static boolean coin(int i) { return sp().getBoolean("coin" + i, true); }
     static void setCoin(int i, boolean on) { put("coin" + i, on); }
 

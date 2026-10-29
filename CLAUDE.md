@@ -54,6 +54,10 @@ before you do it, and let them do the taps on the TV.
    The same goes for the optional `watchmode_key` (free, watchmode.com; makes picks open the title's page): theirs, secret, only in `config.properties`.
    And for `plex_url` and `plex_token` (Google TV only; their Plex server's newest titles join the picks): the token opens
    their Plex account, so suggest a Plex Home managed user's (the README says how), and it goes only in `config.properties`.
+   The optional Immich key (with `immich_server`, their own Immich server: My Photos come from it) is even more theirs:
+   it opens their photos, so it never goes in `config.properties` or the APK. They send it in their own terminal with
+   `python3 tools/send_key.py <IP> immich_api_key` (Android 9+), which asks for it without showing it (yours can't
+   answer that).
 5. **Build:** `./build.sh` → `FreeMyTV.apk`. Keep `freemytv.keystore`: updates must be signed with the same key.
 6. **Install:** `adb connect <IP>:5555`. The TV asks *Allow USB debugging?*: tell them to accept and tick *Always
    allow*. Then `adb install -r FreeMyTV.apk`. If it hangs, Google Play Protect is asking on the TV (Android 14:
@@ -285,8 +289,8 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
 - Continue Watching gets `READ_TV_LISTINGS` with `pm grant` through the TV's own ADB only when picked in Home Settings;
   *Original* revokes it with `pm revoke`. Watch Next pictures load only from the TV (`content://`, `android.resource://`),
   never from the network. The app talks only to TMDB, Open-Meteo, Binance, Watchmode (with a `watchmode_key`), your Plex
-  server (with a `plex_url`) and GitHub's releases (Updates): new sources (such as Stremio) must not add network calls
-  without the owner's OK.
+  server (with a `plex_url`), your Immich server (with `immich_server` and its key) and GitHub's releases (Updates): new
+  sources (such as Stremio) must not add network calls without the owner's OK.
 - On-screen text: `Ui.tr("English")`, translated from `app/assets/i18n/<lang>.json` (keyed by the English; one
   HashMap lookup, English when a language lacks it). Text built at runtime is a pattern: `Ui.trf("{n} min ago", "n", 12)`,
   never concatenated words. A key `"context|Text"` is the same English where a language may need another word
@@ -306,6 +310,23 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   Built with `--generic`, the place values are empty and `Place` fills them from the TV's time zone
   (`app/assets/zones.json`, written by `tools/make_zones.py` with `web/zones.js`).
   What the person changes on the TV (`Prefs`: Home Settings, Shelf, Remote Buttons, Sleep Timer) wins over those first values.
+- `ImmichPhotos` (with `immich_server` and the key sent to that TV; without the key My Photos is unchanged): every 6
+  hours, on the home screen's resume, a random choice from the server (`POST /api/search/random`, or one album,
+  `Prefs.photoSource`) is downloaded one photo at a time into `Photos.privateInbox` and imported right away, so at most
+  one original is on disk (Immich's preview instead on low-RAM and 720p TVs). Nothing goes before something new came:
+  at `Photos.MAX` the oldest of Immich's make room (`-immich.jpg` names), a new source's photos replace the previous
+  one's as they arrive, and `tools/photos.py`'s are never touched. Redirects are never followed (`x-api-key` would go
+  along to another host).
+- Plain HTTP only to the user's own network: `build.sh` reads every server setting with `lan_server <key>` (now
+  `immich_server`), which refuses an `http://` address that isn't private (10/8, 172.16/12, 192.168/16, `.local`,
+  `.lan`, `.home.arpa`, a one-word name) and lists its host in the generated `network_security_config.xml`, the one
+  place cleartext is allowed. A new feature that talks to a server on the user's network goes through it too.
+- Keys that open the user's own servers (the Immich key) stay out of the APK, which any app on the TV can read:
+  `tools/send_key.py` writes one over adb to `Secrets` (`content://io.freemytv.secrets/<name>`, only adb's shell may,
+  only the names in `Secrets.NAMES`) into the app's private files, and `Secrets.get` reads it. `content query`
+  answers present and when, never the value, so the tool can tell it arrived; adb's `content write` needs
+  Android 9. A new feature with such a
+  key adds its name there and to the tool.
 - Settings rows that need something this TV lacks stay, dimmed as *Unavailable*: `SettingsActivity.need` names what a
   row needs, `Capabilities.missing` says why it's missing (once per screen), and OK on the row shows it in a toast.
 - The remote's app buttons (`RemoteKeys`, `RemoteKeyService`) use each brand's key codes: they run only on TCL,
