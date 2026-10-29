@@ -201,7 +201,7 @@ final class HomeMode {
     }
 
     /** Checked before every disable: never the protected list, Amazon's packages, Android's own pieces or a factory menu. */
-    private static boolean mayTurnOff(String pkg) {
+    static boolean mayTurnOff(String pkg) {
         return !PROTECTED.contains(pkg) && !pkg.startsWith("com.amazon.")
                 && !CORE.matcher(pkg).matches() && !FACTORY.matcher(pkg).matches();
     }

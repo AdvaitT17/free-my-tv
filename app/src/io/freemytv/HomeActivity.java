@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.SystemClock;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -70,9 +71,20 @@ public class HomeActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         if (home == null) return;
-        if (intent.getBooleanExtra(EXTRA_ALL_APPS, false)) home.showAllApps();
+        if (intent.getBooleanExtra(EXTRA_ALL_APPS, false)) {
+            home.showAllApps();
+            return;
+        }
+        long now = SystemClock.uptimeMillis();
+        boolean twice = Prefs.homeTwice() && lastHome != 0 && now - lastHome < TWICE_MS;
+        lastHome = twice ? 0 : now;
+        if (twice) home.showRecents();
         else home.reset(true);
     }
+
+    /** When Home was last pressed, and how soon the second press counts (Settings > Home Settings). */
+    private long lastHome;
+    private static final long TWICE_MS = 700;
 
     @Override protected void onDestroy() {
         if (home != null) home.destroy();

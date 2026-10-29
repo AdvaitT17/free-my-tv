@@ -245,6 +245,15 @@ final class Prefs {
     static Set<String> watchHidden() { return new HashSet<>(sp().getStringSet("watchHidden", new HashSet<>())); }
     static void setWatchHidden(Set<String> keys) { putQuietly("watchHidden", keys); }
 
+    /** Recent Apps: "off" (the default: Android manages memory on its own), "drawer" (a shortcut in the bottom drawer and the
+     *  remote's app-switch key) or "home" (those, and pressing Home twice). The top button is its own choice (Top Buttons). */
+    static String recents() {
+        String v = sp().getString("recents", "off");
+        return v.equals("drawer") || v.equals("home") ? v : "off";
+    }
+
+    static void setRecents(String v) { put("recents", v); }
+
     // MARK: - Widgets and coins
 
     static boolean weather() { return sp().getBoolean("weather", true); }
