@@ -19,7 +19,9 @@ Open source. Built with Claude Code. One button to undo.
 
 - **No ads.** No sponsored rows, banners or autoplaying promos. Not one.
 - **Your apps, front and center.** The streaming apps you actually use, on a glass shelf. Pick them and their order right on the TV.
-- **Trending, not sponsored.** Three fresh picks every hour (up to six, in Home Settings) from what's trending this week and the latest releases, only from apps you already have. Movies and Shows get their own tabs.
+- **Trending, not sponsored.** Three fresh picks every hour (up to six, in Home Settings) from what's trending this week and the latest releases, only from apps you already have, and from the services you choose. The focused one opens wide and the others show their posters. Movies and Shows get their own tabs, and on Google TV your own [Plex library](#your-plex-library-optional) can join in.
+- **Continue Watching** (Google TV and Android TV). *Home Settings* → *Top of the screen* puts what you left halfway in your apps on top, with its progress, and OK picks it up in its app. Or a big clock, or the picks.
+- **Your TMDB key from your phone.** *Home Settings* → *TMDB key* shows a QR code: scan it and paste the key. On LG and Samsung, type it with the remote.
 - **Weather and markets, one press away.** The hour-by-hour forecast (or the next 5 days), sunrise and sunset, and live crypto prices.
 - **What's playing.** Music, a podcast or the radio going on in the background shows on the home screen and the screensaver: the title, the artist and the app, from any app that tells Android what it plays (*Home Settings*, off until you turn it on).
 - **Light by day, dark by night.** It follows your city's real sunset, the way your phone does.
@@ -46,6 +48,8 @@ About ten minutes. You need a Google TV or Android TV (Android 8 or newer) and a
 
 No tools to install besides adb. The APK on the [latest release](https://github.com/simbasjungles/free-my-tv/releases/latest) has no TMDB key: add yours on the TV for the picks (*Home Settings* → *TMDB key*, [below](#the-tmdb-key)). It takes your city from the TV's time zone (change it in *Home Settings* → *City*).
 
+If you built Free My TV yourself before, switch back to *Original* and uninstall it first: your build and the release are signed with different keys.
+
 1. **On the TV**, do step 1 above.
 2. **On your computer**, download `FreeMyTV.apk` from the release and install it:
    ```bash
@@ -54,13 +58,13 @@ No tools to install besides adb. The APK on the [latest release](https://github.
    ```
    On Android 14, Google Play Protect may hold the install with *Risky app blocked*: choose *More details* → *Install anyway*.
 
-   On TCL TVs, also let it run in the background (TCL blocks it by default, and the switch never starts):
+   On TCL TVs, also let it run in the background (TCL blocks it by default, and the switch never starts). An uninstall takes the permission back, so run it again after every new install:
    ```bash
    adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"
    ```
 3. **On the TV**, do step 3 above.
 
-If you built Free My TV yourself before, switch back to *Original* and uninstall it first: your build and the release are signed with different keys. For the picks, add your TMDB key in *Home Settings* → *TMDB key* (below).
+For the picks, add your TMDB key in *Home Settings* → *TMDB key* (below).
 
 **Updates come to the TV.** Once a week the APK from the release looks for a newer release and downloads it; the home screen then says so once, and *Home Settings* → *Updates* (the last row) installs it through Android's installer, which asks first (and, the first time, asks to allow Free My TV to install apps). OK on *Updates* also checks right away. The download must come from this repository's releases, match the size and SHA-256 GitHub lists, be newer, and be signed with the project's key. A build you made yourself checks only when you press *Updates*, and only says when a new version is out: build it again to update.
 
@@ -87,7 +91,7 @@ If you built Free My TV yourself before, switch back to *Original* and uninstall
 
    Chromecast with Google TV on Android 14 keeps port 5555 closed even with USB debugging on: turn on *Wireless debugging* (Developer options), pair with `adb pair <address:port> <code>`, then run `adb tcpip 5555` over that connection. Port 5555 closes again at every restart, so after one, *Original*, the watchdog and the boot check can't reach ADB until you run `adb tcpip 5555` again (the pairing stays).
 
-   On TCL TVs, also let it run in the background (TCL blocks it by default, and the switch never starts):
+   On TCL TVs, also let it run in the background (TCL blocks it by default, and the switch never starts). An uninstall takes the permission back, so run it again after every new install:
    ```bash
    adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"
    ```

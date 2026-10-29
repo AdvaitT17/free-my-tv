@@ -195,6 +195,11 @@ final class HomeMode {
     /** Factory and service menus, on any brand ("com.tcl.factory.view", "com.cvte.tv.fac.aging", "mediatek.factorymenu.ui"). */
     private static final Pattern FACTORY = Pattern.compile("(.*\\.)?(factory|factorymenu|facmenu|fac|hkcfac|testpq)(\\..*)?");
 
+    /** A factory or service menu: never turned off, and never listed with the TV's own apps (HomeApps.launchable). */
+    static boolean factoryMenu(String pkg) {
+        return FACTORY.matcher(pkg).matches();
+    }
+
     /** Checked before every disable: never the protected list, Amazon's packages, Android's own pieces or a factory menu. */
     private static boolean mayTurnOff(String pkg) {
         return !PROTECTED.contains(pkg) && !pkg.startsWith("com.amazon.")
@@ -232,11 +237,11 @@ final class HomeMode {
 
     // MARK: - Requests (from any process)
 
-    /** Asks the main process to switch (the settings screen calls this). */
-    static void request(Context c, String mode) {
+    /** Asks the main process to switch (the settings screen calls this); the stamp tells when it started (ModeJob.started). */
+    static long request(Context c, String mode) {
         // Back to Free My TV before Original's revoke ran: it would stop the app mid-switch, and isn't wanted any more.
         if (FREE.equals(mode)) ModeJob.cancel(c, ModeJob.REVOKE_WATCH);
-        ModeJob.schedule(c, ModeJob.APPLY, mode, 0);
+        return ModeJob.schedule(c, ModeJob.APPLY, mode, 0);
     }
 
     /** Our home screen crashed 3 times in 5 minutes: give the home screen back to the TV's own (asked by :home). */

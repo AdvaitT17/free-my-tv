@@ -55,7 +55,7 @@ import java.util.function.Consumer;
  *    buttons (Live TV, HDMI Inputs, Settings), with the focused one's name below it, and the small crypto quotes
  *    (logo + price) at the right end of the tab row;
  *  - three cards with the titles recommended for right now in the selected tab (Recs, from TMDB); the background is
- *    the first card's photo, heavily blurred and almost white (Backdrop); without picks, one of your own photos
+ *    the focused card's photo, heavily blurred and almost white (Backdrop); without picks, one of your own photos
  *    (Photos) the same way, or else a light gradient;
  *  - at the bottom, the glass shelf with the apps (icons in each brand's color, like the tvOS Dock; the focused one
  *    grows);
@@ -117,6 +117,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final NowPlaying.Watch playing;
     private final Click click;
     private final Handler handler = new Handler(Looper.getMainLooper());
+    /** The background follows the focused pick once it has been there this long (see bgFollow). */
+    private static final long BG_FOLLOW_MS = 500;
     private final SharedPreferences ui;
     private final TvInputManager tvInputs;
     private final Spoken spoken = new Spoken(this, new Spoken.Source() {
@@ -492,8 +494,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (running) return;
         running = true;
         checkNight(false);
-        boolean h24 = Prefs.clock24();
-        if (h24 != clock24) {   // 12/24 hours changed in the TV's settings: the clock and the drawer's times again
+        boolean h24 = Ui.h24();
+        if (h24 != clock24) {   // 12/24 hours changed (the TV's or the Clock row's): the clock and the drawer's times again
             clock24 = h24;
             clockMinute = -1;
             textPrefs = -1;
@@ -538,6 +540,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     void pause() {
         if (!running) return;
         running = false;
+        handler.removeCallbacks(bgFollow);
         cancelReorder(true);
         handler.removeCallbacks(holdStart);
         okHeld = holdArmed = false;
@@ -2116,6 +2119,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         heroChanged |= cardScroll.target != scrollTo;
         cardScroll.target = scrollTo;
         if (snap) cardScroll.snap(scrollTo);
+        if (picksMode() && !cards.isEmpty()) {
+            handler.removeCallbacks(bgFollow);
+            handler.postDelayed(bgFollow, BG_FOLLOW_MS);
+        }
         heroChanged |= aim(watchFocus, !sheetOpen && zone == Z_WATCH ? watchIndex : -1, snap);
         updateTint();
         // The row scrolls so the focused card is at most the third one on screen.
@@ -3088,6 +3095,21 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         return out;
     }
 
+    /**
+     * The background is the focused pick's, as on Netflix and Prime Video: once the focus has rested on it BG_FOLLOW_MS,
+     * so a quick run along the row fades once. Its backdrop is already in memory (this tab's picks all are).
+     */
+    private final Runnable bgFollow = new Runnable() {
+        @Override public void run() {
+            if (!running || !picksMode() || cards.isEmpty()) return;
+            Backdrop b = recs.backdrop(cards.get(Math.min(cardIndex, cards.size() - 1)));
+            // Not built yet (updateCards shows it when it is), or already there: nothing to fade, no frame to draw
+            if (b == null || b == bgTo) return;
+            showBackdrop(b);
+            wake();
+        }
+    };
+
     /** A spoken-feedback service (TalkBack) is on. */
     private boolean talkBack() {
         AccessibilityManager am = (AccessibilityManager) getContext().getSystemService(Context.ACCESSIBILITY_SERVICE);
@@ -3249,7 +3271,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
     }
 
-    /** The three cards of the current tab (Explore, Movies, Shows) and the background taken from the first one. */
+    /** The three cards of the current tab (Explore, Movies, Shows) and the background taken from the focused one. */
     private void updateCards() {
         cardSlots = Prefs.cards();
         if (!picksMode()) {
@@ -3278,7 +3300,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         }
         // Picks bring their own background; without them (no TMDB key), your photo if there is one.
         boolean own = !picksOn() && Photos.on(getContext());
-        Backdrop b = own ? Photos.backdrop(getContext(), ownReady) : cards.isEmpty() ? null : recs.backdrop(cards.get(0));
+        Backdrop b = own ? Photos.backdrop(getContext(), ownReady)
+                : cards.isEmpty() ? null : recs.backdrop(cards.get(Math.min(cardIndex, cards.size() - 1)));
         if (b != null || (cards.isEmpty() && !own)) showBackdrop(b);
         heroDirty = true;
         spoken.focusMoved();    // new picks under the focused card
@@ -3743,8 +3766,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     }
 
     /**
-     * Background: the first card's photo, heavily blurred and almost white; without it, a light gradient. At night, the
-     * same photo almost black (or a dark gradient), drawn on top during the transition.
+     * Background: the focused card's photo, heavily blurred and almost white; without it, a light gradient. At night,
+     * the same photo almost black (or a dark gradient), drawn on top during the transition.
      */
     private void drawLightSky(Canvas c) {
         long up = SystemClock.uptimeMillis();

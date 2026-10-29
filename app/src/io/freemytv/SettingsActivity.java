@@ -213,6 +213,8 @@ public class SettingsActivity extends Activity {
         private String errorShown;
         private final Spoken spoken;
         private long startedAt, lastNanos, pendingAt, lastSky;
+        private long requestedAt;   // the switch asked for: its stamp, to tell whether its job ever started
+        private boolean stalled;    // it didn't: a TV maker's background blocker (stalledText says what to do)
         private int w, h;
         private float k = 1;
         private Paint title, subtitle, version, rowLabel, rowValue, rowSub, header, cellLabel, cellValue, warn, spinner, white, shadow;
@@ -231,7 +233,18 @@ public class SettingsActivity extends Activity {
                     spoken.focusMoved();   // TalkBack reads the Updates row's new value
                 }
                 boolean nowBusy = !busyText().isEmpty();
-                if (nowBusy) pendingAt = 0;
+                if (nowBusy) {
+                    pendingAt = 0;
+                    stalled = false;
+                } else if (pendingAt != 0 && SystemClock.uptimeMillis() - pendingAt >= 10_000) {
+                    // Asked 10 s ago and its job never ran: say why, rather than quietly showing Original again (#364).
+                    pendingAt = 0;
+                    if (!ModeJob.started(getContext(), requestedAt)) {
+                        stalled = true;
+                        AppLog.w("the switch's job didn't start" + (RemoteKeys.TCL ? " (TCL's AUTO_START not allowed?)" : ""));
+                        announceForAccessibility(stalledText());
+                    }
+                }
                 // What can change the reasons away from a key: a switch (or the watchdog's revert) and the overlay's and the
                 // listener's checks.
                 int whyNow = (freeActive() ? 1 : 0) | (Capabilities.refused(getContext(), Capabilities.OVERLAY) ? 2 : 0)
@@ -466,6 +479,18 @@ public class SettingsActivity extends Activity {
             return HomeMode.FREE.equals(state.optString("mode")) && !state.optBoolean("homeReverted");
         }
 
+        /**
+         * Why a switch never started, and what to do. TCL's TclAppBoot blocks the job until its permission is allowed
+         * from a computer, and an uninstall takes that back (#364, #375): the README's command, for both of its names.
+         */
+        private static String stalledText() {
+            return RemoteKeys.TCL
+                    ? Ui.trf("TCL blocks Free My TV from running in the background, so nothing changed. From a computer, "
+                            + "run this, then try again: {command}", "command",
+                            "adb shell \"appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow\"")
+                    : Ui.tr("The TV didn't let Free My TV run in the background, so nothing changed. Try again in a minute.");
+        }
+
         private int rowCount() {
             switch (screen) {
                 case MAIN: return 8;
@@ -553,18 +578,19 @@ public class SettingsActivity extends Activity {
             }
 
             float y = (MAIN_TOP + labels.length * (ROW_H + MAIN_GAP) + 20) * k;
-            String error = state.optString("error");
+            String error = stalled ? stalledText() : state.optString("error");
             if (working && busyText.equals(Ui.tr("Accept “Allow USB debugging?” on the TV (tick “Always allow”)."))) {
                 c.drawText(Ui.tr("On the TV: tick “Always allow” and press OK."),
                         LIST_X * k + 30 * k, y, warn);
                 y += 46 * k;
             } else if (!working && !error.isEmpty()) {
-                // The whole message, on up to five lines: some say what to do (the Wi-Fi one, #14).
+                // The whole message, on up to five lines: some say what to do (the Wi-Fi one, #14). A stalled switch's
+                // ends with a command, which must never be cut: eight there.
                 int width = Math.round(760 * k);
                 if (errorLayout == null || !error.equals(errorShown) || errorLayout.getWidth() != width) {
                     errorShown = error;
                     errorLayout = StaticLayout.Builder.obtain(error, 0, error.length(), new TextPaint(warn), width)
-                            .setMaxLines(5).setEllipsize(TextUtils.TruncateAt.END).build();
+                            .setMaxLines(stalled ? 8 : 5).setEllipsize(TextUtils.TruncateAt.END).build();
                 }
                 c.save();
                 c.translate(LIST_X * k + 30 * k, y - errorLayout.getLineBaseline(0));
@@ -761,17 +787,13 @@ public class SettingsActivity extends Activity {
                             if (screen == PICKER && pickFor == PICK_ALBUM) {
                                 openPhotoSources();
                             } else if (screen == PICKER && pickFor == PICK_PHOTOS) {
-                                focus = PHOTOS_ROW;
-                                pickScroll = 0;   // the row is on the list's first screen
-                                screen = HOME_SETTINGS;
+                                showSettingsRow(PHOTOS_ROW);
                             } else if (screen == PICKER && pickFor <= PICK_SLEEP) {
                                 focus = powerFocus(pickFor == PICK_SLEEP ? P_SLEEP : P_WHERE);
                                 pickScroll = 0;   // the picker's scroll isn't this short list's
                                 screen = POWER;
                             } else if (screen == PICKER && (pickFor == PICK_CITY || pickFor == PICK_LANGUAGE)) {
-                                focus = pickFor == PICK_CITY ? CITY_ROW : 0;
-                                pickScroll = 0;   // both rows are on the list's first screen
-                                screen = HOME_SETTINGS;
+                                showSettingsRow(pickFor == PICK_CITY ? CITY_ROW : 0);
                             } else if (screen == PICKER) {
                                 focus = pickFor - 1;
                                 screen = REMOTE_KEYS;
@@ -808,12 +830,14 @@ public class SettingsActivity extends Activity {
 
         // MARK: - Home Settings and Remote Buttons
 
-        private static final String[] UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"};
-        /** Home Settings: language, temperature, theme, my photos, sounds, top of the screen, picks, Continue Watching's
-         *  apps, watch from the screensaver, weather, city, forecast, now playing, quotes, one row per coin, then the TMDB
-         *  key and updates (the last row). */
-        private static final int PHOTOS_ROW = 3, TOP_ROW = 5, PICKS_ROW = 6, WATCH_ROW = 7, SAVER_ROW = 8, WEATHER_ROW = 9,
-                CITY_ROW = 10, FORECAST_ROW = 11, PLAYING_ROW = 12, QUOTES_ROW = 13, COIN_ROWS = 14;
+        private static final String[] UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"},
+                CLOCKS = {"auto", "24", "12"};
+        /** Home Settings: language, temperature, theme, clock, my photos, sounds, top of the screen, picks, Continue
+         *  Watching's apps, watch from the screensaver, Android apps, weather, city, forecast, now playing, quotes, one row
+         *  per coin, then the TMDB key and updates (the last row). */
+        private static final int CLOCK_ROW = 3, PHOTOS_ROW = 4, TOP_ROW = 6, PICKS_ROW = 7, WATCH_ROW = 8,
+                SAVER_ROW = 9, ANDROID_APPS_ROW = 10, WEATHER_ROW = 11, CITY_ROW = 12, FORECAST_ROW = 13, PLAYING_ROW = 14,
+                QUOTES_ROW = 15, COIN_ROWS = 16;
         /** Home Settings rows on screen at once (what fits above the hints at 1080p); a longer list scrolls. */
         private static final int SETTINGS_VISIBLE = 10;
 
@@ -826,12 +850,14 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Language"));
             l.add(Ui.tr("Temperature"));
             l.add(Ui.tr("Theme"));
+            l.add(Ui.tr("Clock"));
             l.add(Ui.tr("My Photos"));
             l.add(Ui.tr("Navigation sounds"));
             l.add(Ui.tr("Top of the screen"));
             l.add(Ui.tr("Picks"));
             l.add(Ui.tr("Continue Watching apps"));
             l.add(Ui.tr("Watch from the screensaver"));
+            l.add(Ui.tr("Android apps"));   // before the weather widget: City and Forecast are the widget's
             l.add(Ui.tr("Weather widget"));
             l.add(Ui.tr("City"));
             l.add(Ui.tr("Forecast"));
@@ -882,7 +908,9 @@ public class SettingsActivity extends Activity {
             v[PHOTOS_ROW] = photos == 0 ? Ui.tr("photos|None")
                     : Prefs.photos() ? Ui.plural("plural|one:{n} photo|other:{n} photos", photos) : Ui.tr("Off");
             if (ImmichPhotos.configured(getContext())) v[PHOTOS_ROW] = immichPhotosValue(photos);
-            v[4] = onOff(Prefs.sounds());
+            String clock = Prefs.clockFormat();
+            v[CLOCK_ROW] = clock.equals("24") ? Ui.tr("24 hours") : clock.equals("12") ? Ui.tr("12 hours") : Ui.tr("Automatic");
+            v[5] = onOff(Prefs.sounds());
             v[PICKS_ROW] = "›";   // opens its own screen: Picks per tab and Picks from
             v[SAVER_ROW] = onOff(Prefs.saverWatch());
             String top = Prefs.topContent();
@@ -891,6 +919,7 @@ public class SettingsActivity extends Activity {
                     : Ui.tr("Picks");
             v[WATCH_ROW] = watchCount();
             v[WEATHER_ROW] = onOff(Prefs.weather());
+            v[ANDROID_APPS_ROW] = onOff(Prefs.androidApps());
             v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
             v[FORECAST_ROW] = Prefs.forecast().equals("days") ? Ui.tr("Next days") : Ui.tr("Next hours");
             v[PLAYING_ROW] = onOff(Prefs.nowPlaying());
@@ -1177,7 +1206,12 @@ public class SettingsActivity extends Activity {
                     if (Photos.files(getContext()).isEmpty()) return;
                     Prefs.setPhotos(!Prefs.photos());
                     return;
-                case 4: Prefs.setSounds(!Prefs.sounds()); break;
+                case CLOCK_ROW: {
+                    int at = java.util.Arrays.asList(CLOCKS).indexOf(Prefs.clockFormat());
+                    Prefs.setClockFormat(CLOCKS[(at + dir + CLOCKS.length) % CLOCKS.length]);
+                    break;
+                }
+                case 5: Prefs.setSounds(!Prefs.sounds()); break;
                 case PICKS_ROW: return;
                 case SAVER_ROW: Prefs.setSaverWatch(!Prefs.saverWatch()); break;
                 case TOP_ROW: {
@@ -1191,6 +1225,7 @@ public class SettingsActivity extends Activity {
                 }
                 case WATCH_ROW: return;   // a list of its own (OK)
                 case WEATHER_ROW: Prefs.setWeather(!Prefs.weather()); break;
+                case ANDROID_APPS_ROW: Prefs.setAndroidApps(!Prefs.androidApps()); break;
                 case CITY_ROW: return;
                 case FORECAST_ROW:   // both are in memory: nothing to fetch
                     Prefs.setForecast(Prefs.forecast().equals("days") ? "hours" : "days");
@@ -1299,9 +1334,17 @@ public class SettingsActivity extends Activity {
 
         private void closeKeyScreen() {
             stopKeyPage();
+            showSettingsRow(keyRow());
+        }
+
+        /**
+         * Back on Home Settings with the focus on `row`, scrolled so it shows: City, past the first screen since Continue
+         * Watching's rows, came back with the focus off screen (and the picker's scroll isn't this list's).
+         */
+        private void showSettingsRow(int row) {
             screen = HOME_SETTINGS;
-            int row = keyRow(), rows = settingLabels().length;
-            pickScroll = Math.max(0, Math.min(row - 3, rows - Math.min(SETTINGS_VISIBLE, rows)));
+            int rows = settingLabels().length, visible = Math.min(SETTINGS_VISIBLE, rows);
+            pickScroll = row < visible ? 0 : Math.max(0, Math.min(row - 3, rows - visible));
             focus = row - pickScroll;
         }
 
@@ -1597,9 +1640,7 @@ public class SettingsActivity extends Activity {
             }
             // Also when it's the same choice: My Photos turned off earlier (before the key came) is on again
             Prefs.setPhotos(!"default".equals(source));
-            focus = PHOTOS_ROW;
-            pickScroll = 0;
-            screen = HOME_SETTINGS;
+            showSettingsRow(PHOTOS_ROW);
         }
 
         private void searchCity(String name) {
@@ -2033,8 +2074,9 @@ public class SettingsActivity extends Activity {
                 boolean wantFree = focus == 0;
                 boolean already = wantFree ? freeActive() : HomeMode.ORIGINAL.equals(state.optString("mode", HomeMode.ORIGINAL));
                 if (!already && !busy()) {
-                    HomeMode.request(c, wantFree ? HomeMode.FREE : HomeMode.ORIGINAL);
+                    requestedAt = HomeMode.request(c, wantFree ? HomeMode.FREE : HomeMode.ORIGINAL);
                     pendingAt = SystemClock.uptimeMillis();
+                    stalled = false;
                 }
                 screen = MAIN;
                 focus = 0;
@@ -2042,9 +2084,7 @@ public class SettingsActivity extends Activity {
                 String[] city = cities.get(pickScroll + focus);
                 Prefs.setCity(city[1], city[2], city[3]);
                 HomeData.get(c).settingsChanged();
-                focus = CITY_ROW;
-                pickScroll = 0;
-                screen = HOME_SETTINGS;
+                showSettingsRow(CITY_ROW);
             } else if (screen == PICKER && (pickFor == PICK_PHOTOS || pickFor == PICK_ALBUM)) {
                 pickPhotoSource();
             } else if (screen == PICKER && pickFor <= PICK_SLEEP) {

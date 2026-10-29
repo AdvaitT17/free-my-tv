@@ -82,6 +82,14 @@ final class Prefs {
         return app != null && android.text.format.DateFormat.is24HourFormat(app);
     }
 
+    /** "auto" (the TV's own 12/24-hour setting), "24" or "12". */
+    static String clockFormat() {
+        String v = sp().getString("clock", "auto");
+        return v.equals("24") || v.equals("12") ? v : "auto";
+    }
+
+    static void setClockFormat(String v) { put("clock", v); }
+
     /** The app's context in this process (null before App.onCreate). */
     static Context context() {
         return app;
@@ -269,6 +277,13 @@ final class Prefs {
 
     static boolean coin(int i) { return sp().getBoolean("coin" + i, true); }
     static void setCoin(int i, boolean on) { put("coin" + i, on); }
+
+    /**
+     * Also list the TV's own system apps (Settings, Files, the manufacturer's apps) in All Apps and the shelf editor.
+     * Off keeps the list as it always was: the apps people installed, plus the system ones a TV needs there.
+     */
+    static boolean androidApps() { return sp().getBoolean("androidapps", false); }
+    static void setAndroidApps(boolean on) { put("androidapps", on); }
 
     // MARK: - TMDB key
 
