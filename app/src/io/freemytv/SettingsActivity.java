@@ -17,7 +17,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
-import android.provider.Settings;
 import android.text.InputType;
 import android.text.StaticLayout;
 import android.text.TextPaint;
@@ -2227,7 +2226,9 @@ public class SettingsActivity extends Activity {
                 screen = POWER;
                 focus = 0;
             } else {
-                activity.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                // As the drawer's TV Settings: where nothing answers the standard request (an HY300 Pro+ in Free My TV
+                // mode, #379), Android TV's own settings, and never a crash.
+                HomeApps.open(activity, HomeApps.tvSettings(), null);
             }
             for (Spring s : pop) s.snap(0);
             invalidate();

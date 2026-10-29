@@ -310,7 +310,7 @@ final class HomeApps {
     }
 
     /** Free My TV settings, in the corner of the home screen. */
-    /** The TV's own settings (android.settings.SETTINGS). */
+    /** The TV's own settings (android.settings.SETTINGS; where nothing answers it, Android TV's settings app). */
     static Item tvSettings() {
         return shortcut(ANDROID_SETTINGS, "tv-settings", Ui.tr("TV Settings"), "tv_settings");
     }
@@ -564,7 +564,8 @@ final class HomeApps {
 
     /** Opens the item; `options` for the transition, or null (the screensaver has no card to grow out of). */
     static boolean open(Context a, Item it, android.os.Bundle options) {
-        Intent intent, plain = null;   // plain: the app's own home, when it won't take the title's address
+        // plain: tried when `intent` finds nothing (the app's own home, when it won't take the title's address)
+        Intent intent, plain = null;
         switch (it.kind) {
             case APP:
                 intent = launchIntent(a.getPackageManager(), it.pkg);
@@ -586,6 +587,9 @@ final class HomeApps {
                 break;
             case ANDROID_SETTINGS:
                 intent = new Intent(Settings.ACTION_SETTINGS);
+                // Where nothing answers it, Android TV's own settings by name: on the HY300 Pro+ the stock home
+                // (com.htc.magcubicos) is the one that does, and Free My TV mode turns it off (#379).
+                plain = new Intent().setComponent(new ComponentName("com.android.tv.settings", "com.android.tv.settings.MainSettings"));
                 break;
             case DEVICE:
                 // A fresh task: else Back walks through whatever the maker's settings app had open before
