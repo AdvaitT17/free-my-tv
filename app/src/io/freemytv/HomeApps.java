@@ -650,6 +650,12 @@ final class HomeApps {
             // exists(), not resolveActivity: that hands an explicit component back without looking (the sticks have none)
             if (exists(c, dtt)) return new Intent().setComponent(dtt);
         }
+        // Sony: its TV app (the launcher tile's) knows the last input and channel. A tuner's channel list can be an empty
+        // one: a BRAVIA lists DvbOpv1 (the CI+ operator input) beside the satellite and antenna ones (#340).
+        if (RemoteKeys.SONY) {
+            Intent sony = launchIntent(pm, "com.sony.dtv.tvx");
+            if (sony != null) return sony;
+        }
         // MediaTek OneWorld TV Center (KTC/NextStar) has one input per tuner mode (antenna, cable, satellite): tuning one
         // switches the TV to that mode and hides the other channel lists, so it opens as it is, on its own last channel.
         Intent oneWorld = launchIntent(pm, "com.mediatek.tv.oneworld.tvcenter");
