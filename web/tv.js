@@ -15,10 +15,11 @@ var TV = (function () {
   // 2017 and 2018 Samsungs (Tizen 3 and 4) freeze opening their settings from an app (MU6100, MU6122, NU7400, #257).
   var tizen34 = samsung && /Tizen [34]\./.test(navigator.userAgent);
   // Tizen 2 (2016 TVs, WebKit 538) repaints every shadow on every frame of a focus animation: home.css turns them off.
-  // So do TVs under 2 GB that draw the page at twice its size (an LG on webOS TV Lite 10, MT5889, 1.3 GB, ratio 2:
-  // 23-28 fps moving along the shelf, 60 with lite; shadows off alone, 45), and LGs under 2 GB at a ratio of 1 too (a
-  // 43LR6700PSA on webOS TV Lite 8.5, 1.5 GB: 45-50 fps with 54-67 dropped frames per 10 moves, 59 with lite; shadows
-  // off alone, 55 with 52). deviceMemory rounds down to 1 under 2 GB on webOS 5+ and Tizen 5+.
+  // So do LGs under 2 GB: an LG on webOS TV Lite 10 (MT5889, 1.3 GB, ratio 2) ran the shelf at 23-28 fps, 60 with lite
+  // and 45 with only the shadows off (#318); a 43LR6700PSA on webOS TV Lite 8.5 (1.5 GB, ratio 1) at 45-50, 59 with
+  // lite and 55 with only the shadows off (#383). Samsungs under 2 GB get it only when they draw the page at twice its
+  // size: none at a ratio of 1 has been measured. deviceMemory (webOS 5+, Tizen 5+) is the nearest power of two, so it
+  // reads 1 up to about 1.5 GB.
   var lowMemory = navigator.deviceMemory && navigator.deviceMemory <= 1;
   if (tizen2 || (webos && lowMemory) || (samsung && lowMemory && (window.devicePixelRatio || 1) > 1)) {
     document.documentElement.className += ' lite';
