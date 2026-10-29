@@ -82,6 +82,14 @@ final class Prefs {
         return app != null && android.text.format.DateFormat.is24HourFormat(app);
     }
 
+    /** "auto" (the TV's own 12/24-hour setting), "24" or "12". */
+    static String clockFormat() {
+        String v = sp().getString("clock", "auto");
+        return v.equals("24") || v.equals("12") ? v : "auto";
+    }
+
+    static void setClockFormat(String v) { put("clock", v); }
+
     /** The app's context in this process (null before App.onCreate). */
     static Context context() {
         return app;

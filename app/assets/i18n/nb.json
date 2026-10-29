@@ -1,6 +1,8 @@
 {
  ", selected": ", valgt",
  ". In use": ". I bruk",
+ "12 hours": "12 timer",
+ "24 hours": "24 timer",
  "24h change": "endring siste 24 t",
  "ADB message too large": "ADB-meldingen er for stor",
  "ADB refused the command": "ADB avviste kommandoen",

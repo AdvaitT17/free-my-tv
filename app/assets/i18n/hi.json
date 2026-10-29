@@ -1,6 +1,8 @@
 {
  ", selected": ", चुना गया",
  ". In use": ". इस्तेमाल में",
+ "12 hours": "12 घंटे",
+ "24 hours": "24 घंटे",
  "24h change": "24 घंटे का बदलाव",
  "ADB message too large": "ADB संदेश बहुत बड़ा है",
  "ADB refused the command": "ADB ने कमांड अस्वीकार कर दी",

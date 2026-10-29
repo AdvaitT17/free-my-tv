@@ -1,6 +1,8 @@
 {
  ", selected": ", seleccionado",
  ". In use": ". En uso",
+ "12 hours": "12 horas",
+ "24 hours": "24 horas",
  "24h change": "variación en 24 h",
  "ADB message too large": "mensaje de ADB demasiado grande",
  "ADB refused the command": "ADB rechazó el comando",
