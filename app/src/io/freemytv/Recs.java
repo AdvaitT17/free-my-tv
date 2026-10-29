@@ -191,7 +191,7 @@ final class Recs {
     private volatile boolean fetching;
     private volatile String error = "";
     private volatile boolean light;     // light design: builds only the cards (all three tabs' cards fit in memory)
-    private volatile long failedAt, keyStamp, linkRetryAt;
+    private volatile long failedAt, keyStamp, traktStamp, linkRetryAt;
     private volatile String listLanguage = "";   // language used for the saved titles, genres and texts
     private volatile String traktActivity = "";  // Trakt's last change when the picks were fetched
     private volatile long traktCheckedAt;
@@ -207,6 +207,7 @@ final class Recs {
             listAt = cache.getLong("listAt", 0);
             listLanguage = cache.getString("language", cache.getBoolean("english", false) ? "en" : "pt");
             keyStamp = cache.getLong("keyStamp", 0);
+            traktStamp = cache.getLong("traktStamp", 0);
             traktActivity = cache.getString("traktActivity", "");
         } catch (Exception ignored) {
         }
@@ -402,21 +403,26 @@ final class Recs {
         long now = System.currentTimeMillis();
         long stamp = sourceStamp();   // a new key, country, animation choice or installed streaming-app set refetches
         boolean newKey = stamp != keyStamp;
+        // Signing in or out of Trakt fetches the list again, judged only in :home: the screensaver's process on Android
+        // 11 to 12L has no Trakt, and must not take the saved list for another account's.
+        long trakt = Trakt.available() ? Trakt.stamp(context) : traktStamp;
+        boolean newTrakt = trakt != traktStamp;
         long sinceFail = now - failedAt;    // negative = the clock went back: don't wait
-        if (!newKey && failedAt != 0 && sinceFail >= 0 && sinceFail < 10 * 60_000L) return;
+        if (!newKey && !newTrakt && failedAt != 0 && sinceFail >= 0 && sinceFail < 10 * 60_000L) return;
         int p = period(now);
         boolean stale = newKey || p != period || now - listAt > LIST_EVERY || now < listAt || picks.isEmpty()
                 || !listLanguage.equals(Ui.language);
         boolean missing = false;
         for (Pick pick : wanted()) missing |= !pick.detailed || !hasImage(pick) || needsLink(pick);
-        boolean checkTrakt = !stale && Trakt.signedIn(context) && (now - traktCheckedAt > TRAKT_EVERY || now < traktCheckedAt);
-        if (!stale && !missing && !checkTrakt) return;
+        boolean checkTrakt = !stale && !newTrakt && Trakt.signedIn(context) && (now - traktCheckedAt > TRAKT_EVERY || now < traktCheckedAt);
+        if (!stale && !missing && !checkTrakt && !newTrakt) return;
         keyStamp = stamp;
+        traktStamp = trakt;
         fetching = true;
         if (checkTrakt) traktCheckedAt = now;
         io.execute(() -> {
             try {
-                boolean list = stale;
+                boolean list = stale || newTrakt;
                 if (checkTrakt) {
                     try {
                         String activity = Trakt.activity(context);
@@ -927,7 +933,7 @@ final class Recs {
     private long sourceStamp() {
         long stamp = ((key().hashCode() * 31L + REGION.hashCode()) * 31L + (Config.HIDE_ANIMATION ? 1 : 0)) * 31L + Config.PLEX_URL.hashCode();
         for (String[] service : SERVICES) stamp = stamp * 31L + (installed(service[2]) ? service[2].hashCode() : 0);
-        return stamp * 31L + Trakt.stamp(context);   // signing in or out of Trakt fetches the picks again
+        return stamp;
     }
 
     // MARK: - Watchmode (the title's own page in its app; the free plan's web addresses are what the apps open)
@@ -1247,7 +1253,7 @@ final class Recs {
                         .put("tag", p.tag == null ? "" : p.tag).put("mine", p.mine).put("detailed", p.detailed));
             }
             SharedPreferences.Editor e = cache.edit().putString("picks", a.toString()).putInt("period", period).putLong("listAt", listAt)
-                    .putString("traktActivity", traktActivity)
+                    .putString("traktActivity", traktActivity).putLong("traktStamp", traktStamp)
                     .putString("language", listLanguage)
                     .putLong("keyStamp", keyStamp).putInt("version", CACHE_VERSION);
             // Watchmode links of titles no longer in the list go (the refused-key mark stays).
