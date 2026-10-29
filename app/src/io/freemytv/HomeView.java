@@ -24,8 +24,6 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
-import android.hardware.usb.UsbConstants;
-import android.hardware.usb.UsbDevice;
 import android.hardware.usb.UsbManager;
 import android.media.tv.TvInputManager;
 import android.net.ConnectivityManager;
@@ -119,6 +117,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private static final float WATCH_GAP = 40;
     private static final float L_TALL_W = 320, L_CARD_GAP = 40, L_BUTTON = 68, L_BUTTON_GAP = 20, L_BUTTON_CY = 103;
     private static final float L_STATUS = 25, L_STATUS_GAP = 22;
+    private static final String[] STATUS_SYMBOLS = {"wifi", "ethernet", "bluetooth", "usb"};
     private static final float L_PLATTER_TOP = 814, L_TILE_H = 126;
     private static final float L_DATE_BASE = 330, L_CLOCK_BASE = 540, L_WEATHER_BASE = 626, L_QUOTES_BASE = 694;
     private static final int L_INK = 0xFF1D1D1F, L_DIM = 0xFF6E6E73, L_FAINT = 0xFF8E8E93;
@@ -140,7 +139,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final TvInputManager tvInputs;
     private final ConnectivityManager connectivity;
     private final BluetoothAdapter bluetooth;
-    private final UsbManager usb;
     private boolean networkRegistered, devicesRegistered, mediaRegistered;
     private int network;   // 0 = not connected, 1 = Wi-Fi, 2 = Ethernet
     private boolean bluetoothConnected, usbConnected;
@@ -328,6 +326,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private long clockMinute = -1;
     private boolean okDown, backDown;
     private float touchX, touchY;
+    private final RectF hitBox = new RectF();   // the mouse's hit tests (menu rows, Continue Watching cards)
 
     private Paint labelPaint, metaPaint, clockPaint, buttonPaint, capsuleText, tipPaint, quotePaint, staleQuote;
     private Paint rowTitle, drawerLabel, cardTitle, cardText, cardDim, cardDimRight, bigTemp, hourPaint, hourTemp, dayLow;
@@ -433,26 +432,17 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private final ConnectivityManager.NetworkCallback networkCallback = new ConnectivityManager.NetworkCallback() {
         @Override public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) {
-            handler.post(HomeView.this::updateNetwork);
+            setNetwork(caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) ? 2
+                    : caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ? 1 : 0);
         }
 
         @Override public void onLost(Network network) {
-            handler.post(HomeView.this::updateNetwork);
+            setNetwork(0);
         }
     };
 
     /** Wi-Fi or Ethernet, for the icon at the top; none when the TV has no network. */
-    private void updateNetwork() {
-        int type = 0;
-        try {
-            Network n = connectivity == null ? null : connectivity.getActiveNetwork();
-            NetworkCapabilities caps = n == null ? null : connectivity.getNetworkCapabilities(n);
-            if (caps != null) {
-                if (caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) type = 2;
-                else if (caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) type = 1;
-            }
-        } catch (RuntimeException ignored) {
-        }
+    private void setNetwork(int type) {
         if (type == network) return;
         network = type;
         status.invalidate();
@@ -460,54 +450,53 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private final BroadcastReceiver deviceCallback = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            handler.post(HomeView.this::updateDevices);
+            updateDevices();
         }
     };
 
     /** The drive broadcasts, in a filter of their own (see startStatus). */
     private final BroadcastReceiver mediaCallback = new BroadcastReceiver() {
         @Override public void onReceive(Context context, Intent intent) {
-            handler.post(HomeView.this::updateDevices);
+            updateDevices();
         }
     };
 
     /**
      * Bluetooth (when something is connected) and a USB drive, for the icons at the top. Only the audio profiles count:
-     * a Bluetooth remote is always connected, and its HID connection would keep the icon on for good.
+     * a Bluetooth remote is always connected, and its HID connection would keep the icon on for good. The queries go to
+     * LOADER: a Bluetooth remote that reconnects on the first key press after a while would otherwise pay for the
+     * profile states, the storage volumes and the binder calls on that very press.
      */
     private void updateDevices() {
-        boolean bt = false;
-        try {
-            if (bluetooth != null && bluetooth.isEnabled()) {
-                bt = bluetooth.getProfileConnectionState(BluetoothProfile.A2DP) == BluetoothProfile.STATE_CONNECTED
-                        || bluetooth.getProfileConnectionState(BluetoothProfile.HEADSET) == BluetoothProfile.STATE_CONNECTED;
-            }
-        } catch (RuntimeException ignored) {
-        }
-        boolean drive = false;
-        try {
-            StorageManager sm = (StorageManager) getContext().getSystemService(Context.STORAGE_SERVICE);
-            if (sm != null) {
-                for (StorageVolume v : sm.getStorageVolumes()) {
-                    if (v.isRemovable() && Environment.MEDIA_MOUNTED.equals(v.getState())) {
-                        drive = true;
-                        break;
-                    }
+        LOADER.execute(() -> {
+            boolean bt = false;
+            try {
+                if (bluetooth != null && bluetooth.isEnabled()) {
+                    bt = bluetooth.getProfileConnectionState(BluetoothProfile.A2DP) == BluetoothProfile.STATE_CONNECTED
+                            || bluetooth.getProfileConnectionState(BluetoothProfile.HEADSET) == BluetoothProfile.STATE_CONNECTED;
                 }
+            } catch (RuntimeException ignored) {
             }
-            if (!drive && usb != null) {
-                for (UsbDevice d : usb.getDeviceList().values()) {
-                    for (int i = 0; i < d.getInterfaceCount(); i++) {
-                        if (d.getInterface(i).getInterfaceClass() == UsbConstants.USB_CLASS_MASS_STORAGE) {
+            boolean drive = false;
+            try {
+                StorageManager sm = (StorageManager) getContext().getSystemService(Context.STORAGE_SERVICE);
+                if (sm != null) {
+                    for (StorageVolume v : sm.getStorageVolumes()) {
+                        // Only a mounted one: #192's unmounted drive doesn't show.
+                        if (v.isRemovable() && Environment.MEDIA_MOUNTED.equals(v.getState())) {
                             drive = true;
                             break;
                         }
                     }
-                    if (drive) break;
                 }
+            } catch (RuntimeException ignored) {
             }
-        } catch (RuntimeException ignored) {
-        }
+            boolean btOn = bt, driveOn = drive;
+            handler.post(() -> setDevices(btOn, driveOn));
+        });
+    }
+
+    private void setDevices(boolean bt, boolean drive) {
         if (bt == bluetoothConnected && drive == usbConnected) return;
         bluetoothConnected = bt;
         usbConnected = drive;
@@ -517,8 +506,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     /** Reads the icons' state and listens for changes only while the setting is on (nothing runs with it off). */
     private void startStatus() {
         if (!Prefs.statusIcons()) return;
-        updateNetwork();
         updateDevices();
+        // The registration hands the current network over at once, so the first read is this callback.
         if (connectivity != null && !networkRegistered) {
             try {
                 connectivity.registerDefaultNetworkCallback(networkCallback, handler);
@@ -615,7 +604,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         connectivity = (ConnectivityManager) a.getSystemService(Context.CONNECTIVITY_SERVICE);
         BluetoothManager bm = (BluetoothManager) a.getSystemService(Context.BLUETOOTH_SERVICE);
         bluetooth = bm == null ? null : bm.getAdapter();
-        usb = (UsbManager) a.getSystemService(Context.USB_SERVICE);
         launcherApps = (LauncherApps) a.getSystemService(Context.LAUNCHER_APPS_SERVICE);
         try {
             if (launcherApps != null) launcherApps.registerCallback(packages, handler);
@@ -623,7 +611,6 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             AppLog.w("no app-change callback: " + e.getMessage());
         }
         setFocusable(true);
-        setClickable(true);
         sky = new Layer(a, SKY);
         heroLayer = new Layer(a, HERO);
         status = new Layer(a, STATUS);
@@ -2642,6 +2629,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void hover(float x, float y) {
         wake();
         if (reordering) return;
+        if (menuOpen) {   // only the menu's rows: what's behind it stays as it was
+            int row = menuAt(x, y);
+            if (row >= 0 && row != menuIndex) moveMenu(row - menuIndex);
+            return;
+        }
         if (sheetOpen) {
             int hit = gridAt(x, y);
             if (hit >= 0 && hit != gridIndex) {
@@ -2661,19 +2653,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             return;
         }
         int hit = hit(topRects, x, y);
-        if (hit >= 0 && (hit >= 3 || picksOn())) {
+        if (hit >= 0 && (hit >= 3 || picksMode())) {   // the tabs are there only with the picks
             if (zone != Z_TOP || topIndex != hit) {
                 zone = Z_TOP;
                 topIndex = hit;
-                retarget(false);
-            }
-            return;
-        }
-        hit = hit(statusRects, x, y);
-        if (hit >= 0) {
-            if (zone != Z_STATUS || statusIndex != hit) {
-                zone = Z_STATUS;
-                statusIndex = hit;
                 retarget(false);
             }
             return;
@@ -2687,7 +2670,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             }
             return;
         }
-        hit = hit(tileRects, x, y);
+        hit = watchAt(x, y);
+        if (hit >= 0) {
+            if (zone != Z_WATCH || watchIndex != hit) {
+                zone = Z_WATCH;
+                watchIndex = hit;
+                retarget(false);
+            }
+            return;
+        }
+        hit = tileAt(x, y);
         if (hit >= 0 && (zone != Z_SHELF || shelfIndex != hit)) {
             zone = Z_SHELF;
             shelfIndex = hit;
@@ -2697,7 +2689,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private void wheel(int dir) {
         wake();
-        if (sheetOpen) {
+        if (menuOpen) {
+            moveMenu(dir);
+        } else if (sheetOpen) {
             int next = Math.max(0, Math.min(others.size() - 1, gridIndex + dir * COLUMNS));
             if (next != gridIndex) {
                 gridIndex = next;
@@ -2717,6 +2711,12 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 cardIndex = next;
                 retarget(false);
             }
+        } else if (zone == Z_WATCH && !watching.isEmpty()) {
+            int next = Math.max(0, Math.min(watching.size() - 1, watchIndex + dir));
+            if (next != watchIndex) {
+                watchIndex = next;
+                retarget(false);
+            }
         } else if (!shelf.isEmpty()) {
             int next = Math.max(0, Math.min(shelf.size() - 1, shelfIndex + dir));
             if (next != shelfIndex) {
@@ -2730,6 +2730,18 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private void tap(float x, float y) {
         wake();
         if (reordering) return;
+        if (menuOpen) {   // a click on a row picks it; anywhere else closes the menu (never what's behind it)
+            int row = menuAt(x, y);
+            if (row < 0) {
+                closeMenu(false);
+                click.move();
+                return;
+            }
+            menuIndex = row;
+            menuPick.target = row;
+            pickMenu();
+            return;
+        }
         if (sheetOpen) {
             int hit = gridAt(x, y);
             if (hit >= 0) {
@@ -2752,17 +2764,9 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             return;
         }
         int hit = hit(topRects, x, y);
-        if (hit >= 0 && (hit >= 3 || picksOn())) {
+        if (hit >= 0 && (hit >= 3 || picksMode())) {
             zone = Z_TOP;
             topIndex = hit;
-            retarget(false);
-            activate();
-            return;
-        }
-        hit = hit(statusRects, x, y);
-        if (hit >= 0) {
-            zone = Z_STATUS;
-            statusIndex = hit;
             retarget(false);
             activate();
             return;
@@ -2775,13 +2779,51 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             activate();
             return;
         }
-        hit = hit(tileRects, x, y);
+        hit = watchAt(x, y);
+        if (hit >= 0) {
+            zone = Z_WATCH;
+            watchIndex = hit;
+            retarget(false);
+            activate();
+            return;
+        }
+        hit = tileAt(x, y);
         if (hit >= 0) {
             zone = Z_SHELF;
             shelfIndex = hit;
             retarget(false);
             activate();
         }
+    }
+
+    /** The menu's row under a point, if any. */
+    private int menuAt(float x, float y) {
+        for (int i = 0; i < menuOptions.length; i++) {
+            menuRow(i, hitBox);
+            if (hitBox.contains(x, y)) return i;
+        }
+        return -1;
+    }
+
+    /** The Continue Watching card under a point, if any (only the ones on screen). */
+    private int watchAt(float x, float y) {
+        if (!continueMode()) return -1;
+        for (int i = 0; i < watching.size(); i++) {
+            watchRect(i, hitBox);
+            if (hitBox.left > w || hitBox.right <= watchLeftEdge()) continue;
+            if (hitBox.contains(x, y)) return i;
+        }
+        return -1;
+    }
+
+    /**
+     * The shelf tile under a point, if any: only the ones on screen. The next tile's place is just past the glass, at the
+     * screen's edge, and a pointer resting there would scroll the shelf one app at a time to its end.
+     */
+    private int tileAt(float x, float y) {
+        int last = Math.min(tileRects.length, shelfFirst + Math.min(shelf.size(), shelfVisible));
+        for (int i = shelfFirst; i < last; i++) if (tileRects[i].contains(x, y)) return i;
+        return -1;
     }
 
     private static int hit(RectF[] rects, float x, float y) {
@@ -3643,6 +3685,11 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             Symbols.warm(getContext(), it.symbol, 27 * k);
             Symbols.warm(getContext(), it.symbol, 27 * k * 1.1f);
         }
+        if (Prefs.statusIcons()) {   // at the sizes drawStatusIcon uses: drawing never scales a 150 px PNG down to 25
+            for (String name : STATUS_SYMBOLS) {
+                Symbols.warm(getContext(), name, Symbols.pointSizeForHeight(getContext(), name, L_STATUS * k * statusScale(name)));
+            }
+        }
         Symbols.warmWeather(getContext(), 40 * k);
         heroDirty = statusDirty = true;
         layoutCards();
@@ -4451,8 +4498,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         float height = L_STATUS * k, gap = L_STATUS_GAP * k;
         int color = Ui.alpha(tone(L_INK, 0xEBFFFFFF), 0.85f);
         float x = MARGIN * k;
-        // With the picks on, the "For You" title is on this line too: the icons start after it, not under it.
-        if (picksOn()) x += lTitle.measureText(Ui.tr("For You")) + gap;
+        // The top title ("For You", or "Continue Watching") is on this line too: the icons start after it, not on it.
+        if (!clockMode()) x += lTitle.measureText(picksMode() ? Ui.tr("For You") : Ui.tr("Continue Watching")) + gap;
         if (network != 0) x = drawStatusIcon(c, network == 2 ? "ethernet" : "wifi", x, height, gap, color);
         if (bluetoothConnected) x = drawStatusIcon(c, "bluetooth", x, height, gap, color);
         if (usbConnected) drawStatusIcon(c, "usb", x, height, gap, color);

@@ -746,6 +746,7 @@ public class SettingsActivity extends Activity {
                     if (Math.hypot(e.getX() - touchX, e.getY() - touchY) < 24 * k) {
                         int row = rowAt(e.getX(), e.getY());
                         if (row >= 0) {
+                            leaveTopRow(row);
                             focus = row - pickScroll;
                             activate();
                             invalidate();
@@ -762,6 +763,7 @@ public class SettingsActivity extends Activity {
             if (e.getActionMasked() == MotionEvent.ACTION_HOVER_MOVE) {
                 int row = rowAt(e.getX(), e.getY()), at = row - pickScroll;
                 if (row >= 0 && at != focus) {
+                    leaveTopRow(row);
                     focus = at;
                     invalidate();
                     spoken.focusMoved();
@@ -791,7 +793,13 @@ public class SettingsActivity extends Activity {
             return -1;
         }
 
+        /** As the arrows and TalkBack do: leaving "Top of the screen" on Continue Watching asks for its permission. */
+        private void leaveTopRow(int row) {
+            if (screen == HOME_SETTINGS && pickScroll + focus == TOP_ROW && row != TOP_ROW) commitWatch();
+        }
+
         private void wheel(int dir) {
+            int before = pickScroll + focus;
             if (scrolling()) {
                 if (dir > 0 && pickScroll + rowCount() < listSize()) pickScroll++;
                 else if (dir < 0 && pickScroll > 0) pickScroll--;
@@ -800,6 +808,7 @@ public class SettingsActivity extends Activity {
             } else if (dir < 0 && focus > 0) {
                 focus--;
             }
+            if (screen == HOME_SETTINGS && before == TOP_ROW && pickScroll + focus != TOP_ROW) commitWatch();
             invalidate();
             spoken.focusMoved();
         }
@@ -920,8 +929,8 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Picks"));
             l.add(Ui.tr("Continue Watching apps"));
             l.add(Ui.tr("Watch from the screensaver"));
-            l.add(Ui.tr("Android apps"));   // before the weather widget: City and Forecast are the widget's
-            l.add(Ui.tr("Status icons"));
+            l.add(Ui.tr("Android apps"));
+            l.add(Ui.tr("Status icons"));   // before the weather widget: City and Forecast are the widget's
             l.add(Ui.tr("Weather widget"));
             l.add(Ui.tr("City"));
             l.add(Ui.tr("Forecast"));
