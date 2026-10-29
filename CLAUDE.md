@@ -418,7 +418,7 @@ entries; its system pieces are in `PROTECTED`. USB debugging opens ADB on 5555 t
   (webOS 3 and 4, Tizen 3) run a Chromium from 2015 to 2017 (`tools/check.sh` greps for all of these); only transform
   and opacity animate. Tizen 2.4 (2016) runs WebKit 538: no Intl (`fmt` in data.js rounds by hand), SVGs need a width
   and height, and `tv.js` adds a `lite` class there that turns off shadows and transitions, which its GPU can't keep up
-  with (TVs under 2 GB that draw the page at twice its size get it too, `navigator.deviceMemory` and `devicePixelRatio`: an LG on webOS TV Lite went from 25 to 60 fps); it also
+  with (LGs under 2 GB get it too, and Samsungs under 2 GB that draw the page at twice its size, `navigator.deviceMemory` and `devicePixelRatio`: an LG on webOS TV Lite went from 25 to 60 fps, a 1.5 GB one at a ratio of 1 from 45-50 to 59); it also
   can't open the TV's settings (`TV.canOpenSettings`). Without Intl, `toLocaleDateString` ignores its options and
   writes the whole date, so `strings.js` takes weekday and month names from the catalogues there (`I18N.dateNames` in
   data.js: `weekday|`, `month|` and `monthday|` keys, the last in the form next to a day). Tizen 2.3 and 2.4 don't
