@@ -1055,7 +1055,9 @@ final class Recs {
             f.delete();
             return null;
         }
-        Bitmap card = Backdrop.card(full, Backdrop.TALL_W, Backdrop.TALL_H);
+        // A poster is 2:3 and the narrow card a little wider: the strip comes off the bottom (the credits' end), not
+        // half off the top, where the title often is.
+        Bitmap card = Backdrop.card(full, Backdrop.TALL_W, Backdrop.TALL_H, 0);
         if (card != full && !full.isRecycled()) full.recycle();   // the decoded 500 × 750 poster is 1.5 MB
         return new Poster(card);
     }
