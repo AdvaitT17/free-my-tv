@@ -265,6 +265,13 @@ final class Prefs {
     static boolean coin(int i) { return sp().getBoolean("coin" + i, true); }
     static void setCoin(int i, boolean on) { put("coin" + i, on); }
 
+    /**
+     * Also list the TV's own system apps (Settings, Files, the manufacturer's apps) in All Apps and the shelf editor.
+     * Off keeps the list as it always was: the apps people installed, plus the system ones a TV needs there.
+     */
+    static boolean androidApps() { return sp().getBoolean("androidapps", false); }
+    static void setAndroidApps(boolean on) { put("androidapps", on); }
+
     // MARK: - TMDB key
 
     /**

@@ -824,11 +824,11 @@ public class SettingsActivity extends Activity {
         private static final String[] UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"},
                 CLOCKS = {"auto", "24", "12"};
         /** Home Settings: language, temperature, theme, clock, my photos, sounds, top of the screen, picks, Continue
-         *  Watching's apps, watch from the screensaver, weather, city, forecast, now playing, quotes, one row per coin,
-         *  then the TMDB key and updates (the last row). */
+         *  Watching's apps, watch from the screensaver, Android apps, weather, city, forecast, now playing, quotes, one row
+         *  per coin, then the TMDB key and updates (the last row). */
         private static final int CLOCK_ROW = 3, PHOTOS_ROW = 4, TOP_ROW = 6, PICKS_ROW = 7, WATCH_ROW = 8,
-                SAVER_ROW = 9, WEATHER_ROW = 10, CITY_ROW = 11, FORECAST_ROW = 12, PLAYING_ROW = 13, QUOTES_ROW = 14,
-                COIN_ROWS = 15;
+                SAVER_ROW = 9, ANDROID_APPS_ROW = 10, WEATHER_ROW = 11, CITY_ROW = 12, FORECAST_ROW = 13, PLAYING_ROW = 14,
+                QUOTES_ROW = 15, COIN_ROWS = 16;
         /** Home Settings rows on screen at once (what fits above the hints at 1080p); a longer list scrolls. */
         private static final int SETTINGS_VISIBLE = 10;
 
@@ -848,6 +848,7 @@ public class SettingsActivity extends Activity {
             l.add(Ui.tr("Picks"));
             l.add(Ui.tr("Continue Watching apps"));
             l.add(Ui.tr("Watch from the screensaver"));
+            l.add(Ui.tr("Android apps"));   // before the weather widget: City and Forecast are the widget's
             l.add(Ui.tr("Weather widget"));
             l.add(Ui.tr("City"));
             l.add(Ui.tr("Forecast"));
@@ -908,6 +909,7 @@ public class SettingsActivity extends Activity {
                     : Ui.tr("Picks");
             v[WATCH_ROW] = watchCount();
             v[WEATHER_ROW] = onOff(Prefs.weather());
+            v[ANDROID_APPS_ROW] = onOff(Prefs.androidApps());
             v[CITY_ROW] = !cityStatus.isEmpty() ? cityStatus : Prefs.city().isEmpty() ? "—" : Prefs.city();
             v[FORECAST_ROW] = Prefs.forecast().equals("days") ? Ui.tr("Next days") : Ui.tr("Next hours");
             v[PLAYING_ROW] = onOff(Prefs.nowPlaying());
@@ -1212,6 +1214,7 @@ public class SettingsActivity extends Activity {
                 }
                 case WATCH_ROW: return;   // a list of its own (OK)
                 case WEATHER_ROW: Prefs.setWeather(!Prefs.weather()); break;
+                case ANDROID_APPS_ROW: Prefs.setAndroidApps(!Prefs.androidApps()); break;
                 case CITY_ROW: return;
                 case FORECAST_ROW:   // both are in memory: nothing to fetch
                     Prefs.setForecast(Prefs.forecast().equals("days") ? "hours" : "days");

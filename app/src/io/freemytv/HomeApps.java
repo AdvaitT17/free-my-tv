@@ -706,6 +706,11 @@ final class HomeApps {
         return kind * 1000 + hw;
     }
 
+    /**
+     * The apps a TV can start: its TV apps (Leanback) first, then the phone ones (projectors and AOSP boxes). The
+     * system apps only come with "Android apps" on; off keeps the list as it always was, with the few system apps a TV
+     * needs there (SYSTEM_SHOWN).
+     */
     static List<String[]> launchable(Context c) {
         PackageManager pm = c.getPackageManager();
         List<String[]> out = new ArrayList<>();
@@ -715,11 +720,12 @@ final class HomeApps {
             String pkg = ri.activityInfo.packageName;
             if (seen.add(pkg)) out.add(new String[] {pkg, String.valueOf(ri.loadLabel(pm))});
         }
+        boolean androidApps = Prefs.androidApps();
         Intent phone = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER);
         for (ResolveInfo ri : pm.queryIntentActivities(phone, 0)) {
             String pkg = ri.activityInfo.packageName;
-            boolean system = (ri.activityInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
-            if ((system && !SYSTEM_SHOWN.contains(pkg)) || !seen.add(pkg)) continue;
+            boolean systemApp = (ri.activityInfo.applicationInfo.flags & ApplicationInfo.FLAG_SYSTEM) != 0;
+            if ((systemApp && !androidApps && !SYSTEM_SHOWN.contains(pkg)) || !seen.add(pkg)) continue;
             out.add(new String[] {pkg, String.valueOf(ri.loadLabel(pm))});
         }
         return out;
